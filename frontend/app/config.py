@@ -12,3 +12,8 @@ class Config:
 
     # Flask-WTF의 CSRF 보호 켜기 (폼 위조 공격 방어)
     WTF_CSRF_ENABLED = True
+
+    # 비회원 체험 시 보낼 수 있는 메시지 개수.
+    # .env의 GUEST_MESSAGE_LIMIT 값 사용, 없으면 5개 기본.
+    # int()로 변환하는 이유: os.getenv가 항상 문자열을 반환하기 때문
+    GUEST_MESSAGE_LIMIT = int(os.getenv("GUEST_MESSAGE_LIMIT", "5"))

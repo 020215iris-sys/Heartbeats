@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, session
 from ..forms.auth import LoginForm, SignupForm
 from ..services import api_client
+from ..services import guest as guest_svc
 
 bp = Blueprint("auth", __name__)
 
@@ -17,6 +18,8 @@ def login():
         )
 
         if result:
+            guest_svc.end_guest_session()
+            
             # 세션에 사용자 정보 저장
             session["access_token"] = result["access_token"]
             session["email"] = form.email.data
@@ -42,6 +45,8 @@ def signup():
         )
 
         if result:
+            guest_svc.end_guest_session()
+
             session["access_token"] = result["access_token"]
             session["email"] = form.email.data
             session["role"] = result["role"]
