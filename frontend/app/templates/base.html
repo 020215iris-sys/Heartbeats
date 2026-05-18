@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}하트비트{% endblock %}</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: "#f0f9ff", 100: "#e0f2fe",
+              500: "#3b82f6", 600: "#2563eb", 700: "#1d4ed8",
+            },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+  <header class="border-b border-slate-200 bg-white">
+    <div class="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+      <a href="{{ url_for('main.landing') }}" class="font-semibold">
+        ❤ 하트비트
+      </a>
+      <nav class="flex items-center gap-3 text-sm text-slate-600">
+        {% if current_user.status == "authenticated" %}
+
+        {# ----- 로그인됨 (기존과 동일) ----- #}
+        <span class="text-slate-500">
+          {{ current_user.email }}
+          {% if current_user.role == "guardian" %}
+          <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">보호자</span>
+          {% endif %}
+        </span>
+        {% if current_user.role == "user" %}
+        <a href="#" class="hover:text-slate-900">내 상담</a>
+        {% elif current_user.role == "guardian" %}
+        <a href="#" class="hover:text-slate-900">보호 사용자</a>
+        {% endif %}
+        <a href="{{ url_for('auth.logout') }}" class="hover:text-slate-900">로그아웃</a>
+
+        {% elif current_user.status == "guest" %}
+
+        {# ----- 게스트(체험 중) ----- #}
+        {# 남은 메시지 수를 카운트 형태로 표시. 줄어들수록 회원가입 유도 효과 #}
+        <span class="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+          체험 중
+          <strong class="text-brand-600">
+            {{ current_user.guest_remaining }}/{{ current_user.guest_limit }}
+          </strong>
+        </span>
+        <a href="{{ url_for('auth.signup') }}"
+          class="rounded-lg bg-brand-600 px-3 py-1.5 text-white hover:bg-brand-700 transition">
+          회원가입
+        </a>
+
+        {% else %}
+
+        {# ----- 비로그인 ----- #}
+        <a href="{{ url_for('auth.login') }}" class="hover:text-slate-900">로그인</a>
+        <a href="{{ url_for('auth.signup') }}"
+          class="rounded-lg bg-brand-600 px-3 py-1.5 text-white hover:bg-brand-700 transition">
+          회원가입
+        </a>
+
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  {# flash 메시지 표시 영역 (다른 페이지에서 띄운 알림이 여기 뜸) #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="mx-auto max-w-3xl px-4 pt-4 space-y-2">
+    {% for category, msg in messages %}
+    <div class="rounded-md border px-4 py-2 text-sm
+                        {% if category == 'error' %}bg-red-50 border-red-200 text-red-800
+                        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+      {{ msg }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <main>{% block content %}{% endblock %}</main>
+</body>
+
+</html>
