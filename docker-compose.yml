@@ -1,0 +1,87 @@
+# docker-compose.yml
+# 역할: 하트비트의 컨테이너들을 한 번에 정의·실행
+# 사용: docker compose up -d
+#
+# 현재 새봄님 영역: db_main, db_audit, redis
+# 지현님이 나중에 api 서비스를 별도 PR로 추가할 예정
+
+version: "3.9"
+
+# ===== 공통 네트워크 =====
+# 모든 서비스가 이 네트워크에 들어가야 서비스명으로 서로 통신 가능
+networks:
+  heartbeat_net:
+    driver: bridge
+
+# ===== 영속 볼륨 =====
+# 컨테이너 지워도 데이터가 살아남는 별도 저장 공간
+volumes:
+  db_main_data:
+  db_audit_data:
+
+services:
+  # ===========================================
+  # 메인 DB: 회원/설문/진단/상담 등 운영 데이터
+  # ===========================================
+  db_main:
+    image: postgres:16-alpine          # 알파인 = 가벼운 리눅스 (이미지 약 80MB)
+    container_name: heartbeat_db_main
+    restart: unless-stopped            # 충돌 외엔 자동 재시작
+    environment:
+      POSTGRES_USER: heartbeat         # 컨테이너 첫 기동 시 생성될 슈퍼유저
+      POSTGRES_PASSWORD: ${DB_MAIN_PASSWORD}
+      POSTGRES_DB: heartbeat_main      # 첫 기동 시 자동 생성될 DB
+      TZ: Asia/Seoul                   # 타임존 - created_at 등이 KST로 기록되게
+    ports:
+      - "5432:5432"                    # 호스트:컨테이너 - DBeaver 등에서 붙을 때 사용
+    volumes:
+      - db_main_data:/var/lib/postgresql/data
+      # ↑ 데이터 영속화. 컨테이너 지워도 데이터 살아남음
+      - ./db/main/init:/docker-entrypoint-initdb.d:ro
+      # ↑ 자동 스키마 적용. 첫 기동 시 폴더 안 .sql들이 알파벳 순으로 실행됨
+      # ro = read-only (컨테이너에서 실수로 수정 못하게 보호)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heartbeat -d heartbeat_main"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      # ↑ DB가 "쿼리 받을 준비 됨" 상태인지 확인
+    networks:
+      - heartbeat_net
+
+  # ===========================================
+  # 감사 DB: 위기 이벤트, 접근 로그 등 민감 데이터
+  # ===========================================
+  db_audit:
+    image: postgres:16-alpine
+    container_name: heartbeat_db_audit
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heartbeat
+      POSTGRES_PASSWORD: ${DB_AUDIT_PASSWORD}
+      POSTGRES_DB: heartbeat_audit
+      TZ: Asia/Seoul
+    ports:
+      - "5433:5432"                    # 호스트 포트는 5433! (메인과 충돌 방지)
+    volumes:
+      - db_audit_data:/var/lib/postgresql/data
+      - ./db/audit/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heartbeat -d heartbeat_audit"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - heartbeat_net
+
+  # ===========================================
+  # Redis: Celery 브로커 + 캐시
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: heartbeat_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - heartbeat_net
