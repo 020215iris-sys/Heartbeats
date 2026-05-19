@@ -33,7 +33,9 @@ def create_app(config_class: type = Config) -> Flask:
                     else "guest" if is_guest
                     else "anonymous"
                 ),
+                "user_id": session.get("user_id"),
                 "email": session.get("email"),
+                "nickname": session.get("nickname"),
                 "role": session.get("role"),
                 # 게스트일 때만 의미 있는 값들
                 "guest_message_count": guest_svc.get_message_count(),

@@ -1,0 +1,210 @@
+<style>
+#erd svg { width: 100%; min-height: 600px; }
+.legend { display: flex; gap: 20px; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 16px; flex-wrap: wrap; padding: 10px 14px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); }
+.legend-item { display: flex; align-items: center; gap: 8px; }
+.swatch-line { width: 28px; height: 2px; display: inline-block; background: var(--color-text-secondary); }
+.swatch-dashed { width: 28px; border-top: 2px dashed var(--color-text-secondary); display: inline-block; }
+.swatch-box { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid; }
+.note { font-size: 12px; color: var(--color-text-secondary); margin-top: 12px; padding: 8px 12px; background: var(--color-background-warning); border-radius: var(--border-radius-md); }
+.section-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 8px; }
+</style>
+<h2 class="sr-only">하트비트 최종 통합 ERD: 일반 DB와 민감 DB의 11개 테이블과 관계도</h2>
+
+<p class="section-title">하트비트 통합 ERD (v2 최종본)</p>
+
+<div class="legend">
+  <span class="legend-item"><span class="swatch-line"></span>실선 = FK (같은 DB 내)</span>
+  <span class="legend-item"><span class="swatch-dashed"></span>점선 = 논리 참조 (다른 DB 간, FK 불가)</span>
+  <span class="legend-item">📘 일반 DB (5432): USERS, SESSIONS, GUARDIAN_CONSENTS, AUDIT_LOGS_GENERAL</span>
+  <span class="legend-item">📕 민감 DB (5433): DIAGNOSES, COUNSELING_SESSIONS, CONVERSATIONS, SUMMARIES, VOICE_FILES, CRISIS_EVENTS, AUDIT_LOGS_SENSITIVE</span>
+</div>
+
+<div id="erd"></div>
+
+<div class="note">📕 민감 DB 테이블의 user_id는 📘 일반 DB의 users.id를 가리키지만, PostgreSQL은 다른 데이터베이스 간 FK 제약을 지원하지 않습니다. 정합성은 FastAPI 애플리케이션 레벨에서 보장합니다.</div>
+
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: 'sans-serif',
+  // themeVariables: {
+  //   darkMode: dark,
+  //   fontSize: '12px',
+  //   lineColor: dark ? '#9c9a92' : '#73726c',
+  //   textColor: dark ? '#c2c0b6' : '#3d3d3a',
+  //   background: 'transparent',
+  // },
+});
+
+const diagram = `erDiagram
+  USERS {
+    uuid id PK
+    string email UK
+    string nickname
+    string hashed_password
+    string phone_number
+    string role "user/guardian/admin"
+    boolean is_active
+    timestamp created_at
+    timestamp last_login_at
+    timestamp deleted_at
+  }
+
+  SESSIONS {
+    uuid id PK
+    uuid user_id FK
+    string refresh_token
+    string user_agent
+    string ip_address
+    timestamp expires_at
+    timestamp created_at
+  }
+
+  GUARDIAN_CONSENTS {
+    uuid id PK
+    uuid user_id FK
+    string guardian_phone
+    boolean is_active
+    timestamp consented_at
+    timestamp revoked_at
+  }
+
+  AUDIT_LOGS_GENERAL {
+    uuid id PK
+    uuid user_id
+    string action
+    string resource_type
+    uuid resource_id
+    string ip_address
+    timestamp created_at
+  }
+
+  DIAGNOSES {
+    uuid id PK
+    uuid user_id
+    integer phq9_score "0-27"
+    integer gad7_score "0-21"
+    string phq9_severity "5단계"
+    string gad7_severity "4단계"
+    integer phq9_delta "이전대비"
+    integer gad7_delta "이전대비"
+    jsonb compound_flags
+    string selected_prompt_key
+    timestamp created_at
+    timestamp deleted_at
+  }
+
+  COUNSELING_SESSIONS {
+    uuid id PK
+    uuid user_id
+    uuid diagnosis_id FK
+    string persona_type "empathy/coaching/neutral"
+    timestamp started_at
+    timestamp ended_at
+    boolean is_active
+    timestamp deleted_at
+  }
+
+  CONVERSATIONS {
+    uuid id PK
+    uuid session_id FK
+    uuid user_id
+    string role "user/assistant"
+    string message_type "text/system/crisis/summary"
+    text encrypted_content
+    string encryption_key_id
+    float crisis_score
+    timestamp created_at
+    timestamp deleted_at
+  }
+
+  SUMMARIES {
+    uuid id PK
+    uuid session_id FK
+    uuid user_id
+    text main_complaint
+    string risk_level "low/medium/high"
+    boolean suicidal_mentioned
+    text core_topics
+    text next_session_notes
+    string prompt_adjustment
+    timestamp created_at
+  }
+
+  VOICE_FILES {
+    uuid id PK
+    uuid conversation_id FK
+    string s3_path
+    string encryption_key_id
+    integer duration_seconds
+    date retention_until
+    timestamp created_at
+  }
+
+  CRISIS_EVENTS {
+    uuid id PK
+    uuid user_id
+    uuid conversation_id FK
+    float crisis_score
+    string severity "info/warning/crisis"
+    string action_taken
+    boolean guardian_notified
+    boolean resolved
+    timestamp occurred_at
+  }
+
+  AUDIT_LOGS_SENSITIVE {
+    uuid id PK
+    uuid user_id
+    string action
+    string resource_type
+    uuid resource_id
+    string ip_address
+    timestamp created_at
+  }
+
+  USERS ||--o{ SESSIONS : "로그인"
+  USERS ||--o{ GUARDIAN_CONSENTS : "보호자 등록"
+  USERS ||--o{ AUDIT_LOGS_GENERAL : "일반 감사로그"
+  USERS ||..o{ DIAGNOSES : "진단 이력 (논리)"
+  USERS ||..o{ COUNSELING_SESSIONS : "상담 세션 (논리)"
+  USERS ||..o{ CRISIS_EVENTS : "위기 이벤트 (논리)"
+  USERS ||..o{ AUDIT_LOGS_SENSITIVE : "민감 감사 (논리)"
+  DIAGNOSES ||--o| COUNSELING_SESSIONS : "진단 기반"
+  COUNSELING_SESSIONS ||--o{ CONVERSATIONS : "대화 내역"
+  COUNSELING_SESSIONS ||--o| SUMMARIES : "상담 요약"
+  CONVERSATIONS ||--o{ VOICE_FILES : "음성 파일"
+  CONVERSATIONS ||--o{ CRISIS_EVENTS : "위기 감지"
+`;
+
+const { svg } = await mermaid.render('erd-svg', diagram);
+document.getElementById('erd').innerHTML = svg;
+
+document.querySelectorAll('#erd svg .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0], nums[2], nums[4], nums[6]];
+  const ys = [nums[1], nums[3], nums[5], nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', x); rect.setAttribute('y', y);
+  rect.setAttribute('width', w); rect.setAttribute('height', h);
+  rect.setAttribute('rx', '8');
+  for (const a of ['fill', 'stroke', 'stroke-width', 'class', 'style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+
+document.querySelectorAll('#erd svg .row-rect-odd path, #erd svg .row-rect-even path').forEach(p => {
+  p.setAttribute('stroke', 'none');
+});
+</script>

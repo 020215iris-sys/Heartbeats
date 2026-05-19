@@ -34,7 +34,7 @@
 
         {# ----- 로그인됨 (기존과 동일) ----- #}
         <span class="text-slate-500">
-          {{ current_user.email }}
+          {{ current_user.nickname or current_user.email }}
           {% if current_user.role == "guardian" %}
           <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">보호자</span>
           {% endif %}
