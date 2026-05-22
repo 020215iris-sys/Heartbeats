@@ -3,6 +3,7 @@ from .config import Config
 from .extensions import csrf
 from .services import guest as guest_svc
 
+
 def create_app(config_class: type = Config) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -13,9 +14,13 @@ def create_app(config_class: type = Config) -> Flask:
     # Blueprint(라우트 묶음) 등록
     from .routes.main import bp as main_bp
     from .routes.auth import bp as auth_bp
-    
+    from .routes.survey import bp as survey_bp
+    from .routes.chat import bp as chat_bp 
+
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix="/auth")
+    app.register_blueprint(survey_bp, url_prefix="/survey")
+    app.register_blueprint(chat_bp, url_prefix="/chat")
     
     @app.context_processor
     def inject_current_user():
