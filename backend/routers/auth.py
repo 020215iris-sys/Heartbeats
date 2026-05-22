@@ -56,6 +56,8 @@ async def signup(
             resource_type="USER"
         )
         db_audit.add(audit_log)
+        # 중요: 양쪽 DB 모두 flush하여 커밋 전 상태로 준비
+        await db_audit.flush()
 
         # 5. General DB, Audit DB 순차적 커밋 (Cross-DB 정합성)
         await db_general.commit()
