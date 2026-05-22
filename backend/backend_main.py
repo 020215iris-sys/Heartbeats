@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from openai import OpenAI
@@ -11,8 +13,23 @@ from database import engine_general, engine_audit
 from models import Base
 
 
-# 앱 초기화 (타이틀 추가)
-app = FastAPI(title="Heartbeats API")
+# ==========================================
+# 3. 서버 시작/종료 시 실행될 로직 (DB 테이블 생성)
+# ==========================================
+# @app.on_event("startup") 대신 lifespan 핸들러 사용 (FastAPI 권장 방식)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 앱 켜질 때: DB에 테이블 없으면 자동 생성
+    async with engine_general.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with engine_audit.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # 앱 꺼질 때: 필요한 정리 작업 있으면 여기에 추가
+
+
+# 앱 초기화 (lifespan 연결)
+app = FastAPI(title="Heartbeats API", lifespan=lifespan)
 
 # ==========================================
 # 1. AI 채팅 (Groq) 설정 (기존 코드 유지)
@@ -30,17 +47,6 @@ class Message(BaseModel):
 # ==========================================
 # 아까 만든 auth.py(회원가입/로그인)를 메인 앱에 붙여줍니다.
 app.include_router(auth.router)
-
-# ==========================================
-# 3. 서버 시작 시 실행될 로직 (DB 테이블 생성)
-# ==========================================
-@app.on_event("startup")
-async def startup():
-    # 개발 초기 단계용: 앱 켜질 때 DB에 테이블 없으면 자동 생성
-    async with engine_general.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    async with engine_audit.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
 # ==========================================
 # 4. API 엔드포인트
