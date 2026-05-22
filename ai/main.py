@@ -23,7 +23,7 @@ fallback_map = {
     "stabilization_prompt":
         "지금은 많이 버거운 상태처럼 들려요.",
 
-    "emergency_response":
+    "emergency_response_prompt":
         "지금 혼자 감당하기 힘든 상태일 수 있어요."
 }
 
@@ -37,25 +37,40 @@ while True:
 
         conversation_text = "\n".join(conversation_history)
 
-        state = { "selected_prompt_key": prompt_key } 
-        
+        state = {
+            "selected_prompt_key": prompt_key
+        }
+
         summary_input = f"""
-        [SYSTEM STATE]
-        {state}
-        
-        [CONVERSATION]
-        {conversation_text}
-        """
+    [SYSTEM STATE]
+    {state}
+
+    [CONVERSATION]
+    {conversation_text}
+    """
 
         summary = generate_response(
             summary_prompt,
-            conversation_text
+            summary_input
         )
+
+        if contains_foreign(summary):
+
+            summary = generate_response(
+                summary_prompt +
+                "\n반드시 한자, 영어, 일본어, 중국어 없이 한국어만 사용하세요.",
+                summary_input
+            )
+
+            if contains_foreign(summary):
+
+                summary = "요약 생성 중 일부 표현 문제가 발생했습니다."
 
         print("\n===== SUMMARY =====")
         print(summary)
 
         break
+
 
     conversation_history.append(f"USER: {user_input}")
 
