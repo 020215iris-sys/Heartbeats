@@ -6,6 +6,7 @@
 
 import secrets
 from . import user_storage
+from . import diagnosis_storage
 
 class SignupError(Exception):
     def __init__(self, code: str):
@@ -68,3 +69,43 @@ def signup(
     payload = _build_session_payload(user)
     payload["needs_guardian_link"] = (role == "guardian")
     return payload
+
+def save_diagnosis(
+    user_id: str | None,
+    instrument_code: str,
+    scores: dict,
+    severities: dict,
+    follow_ups: list,
+) -> dict:
+    """
+    진단 결과 저장.
+    백엔드 붙으면 requests.post(...)로 교체. 호출하는 라우트는 손 안 댐.
+    """
+    # TODO: 백엔드 붙으면 아래로 교체
+    # res = requests.post(
+    #     f"{current_app.config['API_BASE_URL']}/diagnoses",
+    #     json={
+    #         "user_id": user_id,
+    #         "instrument_code": instrument_code,
+    #         "scores": scores,
+    #         "severities": severities,
+    #         "follow_ups": follow_ups,
+    #     },
+    #     headers={"Authorization": f"Bearer {session.get('access_token')}"},
+    #     timeout=5,
+    # )
+    # return res.json()
+
+    return diagnosis_storage.save(
+        user_id=user_id,
+        instrument_code=instrument_code,
+        scores=scores,
+        severities=severities,
+        follow_ups=follow_ups,
+    )
+
+
+def get_latest_diagnosis(user_id: str) -> dict | None:
+    """사용자의 가장 최근 진단 조회. 채팅 페이지에서 페르소나 결정 시 사용 예정."""
+    # TODO: 백엔드 붙으면 requests.get(...)로 교체
+    return diagnosis_storage.find_latest_by_user(user_id)

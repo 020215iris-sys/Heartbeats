@@ -95,13 +95,24 @@ services:
       - heartbeat_net
 
   # ===========================================
-  # Redis: Celery 브로커 + 캐시
-  # ===========================================
-  redis:
-    image: redis:7-alpine
-    container_name: heartbeat_redis
-    restart: unless-stopped
+  
+
+#  FastAPI 백엔드는 컨테이너
+  api:
+    build: ./backend
+    container_name: heartbeat_api
+    restart: unless-stopped          
+    env_file:                        
+      - ./backend/.env             
     ports:
-      - "6379:6379"
+      - "8000:8000"
+    depends_on:
+      db_general:
+        condition: service_healthy
+      db_sensitive:                  #
+        condition: service_healthy
+      db_audit:
+        condition: service_healthy
     networks:
       - heartbeat_net
+    command: uvicorn backend_main:app --host 0.0.0.0 --port 8000  
