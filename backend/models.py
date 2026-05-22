@@ -20,6 +20,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True) # 소프트 삭제용 추가
 
 # 📓 감사 DB용 모델
 class AuditLogGeneral(Base):
