@@ -1,13 +1,4 @@
--- ============================================================
--- 민감 DB (heartbeat_sensitive) — 확장 기능
--- 역할: UUID 생성, 암호화, 벡터 검색 (AI 임베딩)
--- ============================================================
-
+-- 01_extensions.sql
+-- db_sensitive · 확장 설치 / 이미지: pgvector/pgvector:pg16
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- 벡터 검색용 (대화 임베딩 저장 → RAG, 유사 발화 검색)
--- pgvector 이미지에 포함됨
-CREATE EXTENSION IF NOT EXISTS "vector";
-
--- 쿼리 모니터링
-CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+CREATE EXTENSION IF NOT EXISTS "vector";    -- 향후 AI 임베딩 대비 (현재 ERD 미사용)
