@@ -9,7 +9,7 @@ import os
 
 # 파일 분리 구조(방법 B)에 맞춰 우리가 새로 만든 파일들 불러오기
 from routers import auth
-from database import engine_general, engine_audit
+from database import engine_general, engine_sensitive, engine_audit
 from models import Base
 
 
@@ -21,6 +21,8 @@ from models import Base
 async def lifespan(app: FastAPI):
     # 앱 켜질 때: DB에 테이블 없으면 자동 생성
     async with engine_general.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with engine_sensitive.begin() as conn:   # 민감 DB 테이블 생성 추가
         await conn.run_sync(Base.metadata.create_all)
     async with engine_audit.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
