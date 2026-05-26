@@ -1,6 +1,6 @@
 # DB 테이블 정의
 
-from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, Integer, Float, func, BigInteger
+from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, Integer, Float, func, BigInteger, SmallInteger
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
@@ -56,11 +56,25 @@ class GuardianConsent(Base):
 
 
 # =============================================
-# 🔒 민감 DB (Sensitive DB) - 7개 테이블
+# 🔒 민감 DB (Sensitive DB) - 8개 테이블
 # =============================================
 # 이 DB의 모든 user_id는 일반 DB의 users.id를 가리키지만
 # PostgreSQL은 다른 DB 간 FK를 지원하지 않으므로 논리적 FK로만 관리
 # 정합성은 FastAPI 앱 레벨에서 보장
+
+class CategoryCatalog(Base):
+    """분류 카테고리 정의 (우울·불안·불면·노인우울 등)"""
+    __tablename__ = "category_catalog"
+
+    category_code = Column(String, primary_key=True)            # 카테고리 코드 (예: PHQ9, GAD7)
+    display_name = Column(String, nullable=False)               # 표시명 (예: 우울, 불안)
+    instrument = Column(String, nullable=True)                  # 측정 도구명 (예: PHQ-9)
+    instrument_ver = Column(String, nullable=True)              # 버전
+    item_count = Column(SmallInteger, nullable=True)            # 문항 수
+    max_score = Column(SmallInteger, nullable=True)             # 최대 점수
+    severity_rule = Column(JSONB, nullable=True)                # 점수 구간별 심각도 규칙
+    is_active = Column(Boolean, default=True)                   # 활성 여부
+
 
 class Classification(Base):
     """초기 상태 분류 세션 (사용자 전체 분류 결과)"""
@@ -79,12 +93,14 @@ class ClassificationResult(Base):
     __tablename__ = "classification_results"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    classification_id = Column(UUID(as_uuid=True), nullable=False)  # FK → classifications.id (같은 민감 DB)
-    category_code = Column(String, nullable=False)                  # 카테고리 코드 (예: PHQ9, GAD7)
+    classification_id = Column(UUID(as_uuid=True), nullable=False)  # FK → classifications.id
+    category_code = Column(String, nullable=False)                  # FK → category_catalog.category_code
+    instrument = Column(String, nullable=True)                      # 측정 도구명 (예: PHQ-9)
+    instrument_ver = Column(String, nullable=True)                  # 버전
     responses = Column(JSONB, nullable=True)                        # 문항별 응답 원본
-    total_score = Column(Integer, nullable=True)                    # 총점
+    total_score = Column(SmallInteger, nullable=True)               # 총점
     severity = Column(String, nullable=True)                        # 심각도 (minimal / mild / moderate / severe)
-    score_delta = Column(Integer, nullable=True)                    # 이전 분류 대비 점수 변화량
+    score_delta = Column(SmallInteger, nullable=True)               # 이전 분류 대비 점수 변화량
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -94,7 +110,7 @@ class CounselingSession(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False)            # 논리적 FK → users.id
-    classification_id = Column(UUID(as_uuid=True), nullable=True)   # FK → classifications.id (같은 민감 DB)
+    classification_id = Column(UUID(as_uuid=True), nullable=True)   # FK → classifications.id
     persona_type = Column(String, nullable=True)                    # AI 페르소나 (empathy / coaching / neutral)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     ended_at = Column(DateTime(timezone=True), nullable=True)
@@ -111,8 +127,8 @@ class Conversation(Base):
     user_id = Column(UUID(as_uuid=True), nullable=False)            # 논리적 FK → users.id
     role = Column(String, nullable=False)                           # 발화자 (user / assistant)
     message_type = Column(String, nullable=False)                   # 메시지 유형 (text / system / crisis / summary)
-    encrypted_content = Column(Text, nullable=False)                # 암호화된 메시지 본문
-    encryption_key_id = Column(String, nullable=False)              # 복호화에 사용할 키 ID
+    encrypted_content = Column(Text, nullable=False)                # 암호화된 메시지 본문 (1차: 평문 저장)
+    encryption_key_id = Column(String, nullable=False)              # 복호화에 사용할 키 ID (1차: "none")
     crisis_score = Column(Float, nullable=True)                     # 위기 점수 (0.0 ~ 1.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)     # 소프트 삭제
@@ -185,6 +201,6 @@ class AuditLogSensitive(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     user_id = Column(UUID(as_uuid=True), nullable=False)    # 논리적 FK → users.id
     action = Column(String, nullable=False)                 # CREATE / READ / UPDATE / DELETE
-    resource_type = Column(String, nullable=False)          # DIAGNOSIS / SESSION / CONVERSATION / SUMMARY
+    resource_type = Column(String, nullable=False)          # CLASSIFICATION / SESSION / CONVERSATION / SUMMARY
     resource_id = Column(UUID(as_uuid=True), nullable=True) # 접근한 리소스 ID
     created_at = Column(DateTime(timezone=True), server_default=func.now())
