@@ -29,7 +29,7 @@ def login():
             session["role"] = result["role"]
 
             flash("환영해요! 로그인되었어요.", "info")
-            return redirect(url_for("main.landing"))
+            return redirect(url_for("chat.room"))
         else:
             flash("이메일이나 비밀번호가 올바르지 않아요.", "error")
 
@@ -56,6 +56,8 @@ def signup():
                 form.email.errors.append("이미 사용 중인 이메일이에요")
             elif e.code == "phone_taken":
                 form.phone_number.errors.append("이미 사용 중인 휴대폰 번호예요")
+            else:
+                flash("서버 연결에 실패했어요. 잠시 후 다시 시도해주세요.", "error")
             # 폼 재렌더링으로 fallthrough
         else:
             # 가입 성공 (try 블록이 예외 없이 끝났을 때만 실행)
@@ -69,10 +71,10 @@ def signup():
 
             if result.get("needs_guardian_link"):
                 flash("가입을 환영해요! 곧 사용자 연결 단계로 안내해드릴게요.", "info")
+                return redirect(url_for("main.landing"))
             else:
-                flash("가입을 환영해요! 간단한 설문부터 시작할 예정이에요.", "info")
-
-            return redirect(url_for("main.landing"))
+                flash("가입을 환영해요! 먼저 간단한 설문을 진행할게요.", "info")
+                return redirect(url_for("survey.initial"))
 
     return render_template("auth/signup.html", form=form)
 
