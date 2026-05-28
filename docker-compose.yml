@@ -81,6 +81,7 @@ services:
       POSTGRES_PASSWORD: ${DB_AUDIT_PASSWORD}
       POSTGRES_DB: heartbeat_audit
       TZ: Asia/Seoul
+      DB_AUDIT_WRITER_PASSWORD: ${DB_AUDIT_WRITER_PASSWORD}
     ports:
       - "5434:5432"
     volumes:
