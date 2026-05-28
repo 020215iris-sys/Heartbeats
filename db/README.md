@@ -22,13 +22,15 @@
 - `sessions` — JWT refresh token 관리
 - `guardian_consents` — 보호자 알림 동의 이력
 
-### 📕 민감 DB (6개)
-- `diagnoses` — 자가검진 결과 (PHQ-9, GAD-7)
+### 📕 민감 DB (8개)
 - `counseling_sessions` — 상담 세션 메타
 - `conversations` — 대화 본문 (AES-256 암호화)
 - `summaries` — 상담 종료 후 자동 요약
 - `voice_files` — 음성 파일 메타 (실파일은 S3)
 - `crisis_events` — 위기 감지 이벤트
+- `classigications` - 분류 기본 정보
+- `classification_results` - 분류 결과
+- `category_catalog` - 분류 도감
 
 ### 📓 감사 DB (2개)
 - `audit_logs_general` — 일반 DB 접근/변경 기록
