@@ -95,7 +95,21 @@ services:
       - heartbeat_net
 
   # ===========================================
-  
+  # Redis: Celery 브로커 + 세션/OTP 임시 저장
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: heartbeat_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - heartbeat_net
 
 #  FastAPI 백엔드는 컨테이너
   api:
@@ -112,6 +126,8 @@ services:
       db_sensitive:                  #
         condition: service_healthy
       db_audit:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - heartbeat_net
