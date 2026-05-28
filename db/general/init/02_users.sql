@@ -8,6 +8,7 @@ CREATE TABLE users (
     gender          VARCHAR(20),                          -- 추가: male/female/other/undisclosed (NULL=미응답)
     birth_date      DATE         NOT NULL,                -- 추가: 나이는 여기서 계산 (age 컬럼 두지 않음)
     role            VARCHAR(20)  NOT NULL DEFAULT 'user',
+                    CHECK (role IN ('user', 'guardian', 'admin')),   -- 추후에 counselor 등 역할 추가 가능
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     last_login_at   TIMESTAMPTZ,
