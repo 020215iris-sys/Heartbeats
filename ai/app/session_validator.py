@@ -1,3 +1,5 @@
+# 문자열 최소길이 조정(짧아도 괜찮) / 한국어 비율 제거(외국어땜에 넣어놨는데 prompt_adjustment랑 충돌함)
+
 import re
 
 REQUIRED_KEYS = [
@@ -49,16 +51,16 @@ def validate_output(text: str) -> dict:
     # 4. 문자열 최소 길이
     if "main_complaint:" in text:
         val = text.split("main_complaint:")[1].split("\n\n")[0].strip()
-        if len(val) < 10:
+        if len(val) < 5:
             result["errors"].append("main_complaint 너무 짧음")
             result["pass"] = False
 
-    # 5. 한국어 비율
-    korean_chars = len(re.findall(r'[가-힣]', text))
-    total_chars = len(text.replace(" ", "").replace("\n", ""))
-    if total_chars > 0 and korean_chars / total_chars < 0.3:
-        result["errors"].append("한국어 비율 낮음")
-        result["pass"] = False
+    # # 5. 한국어 비율 --------------------------------------------- prompt_adjustment랑 충돌
+    # korean_chars = len(re.findall(r'[가-힣]', text))
+    # total_chars = len(text.replace(" ", "").replace("\n", ""))
+    # if total_chars > 0 and korean_chars / total_chars < 0.3:
+    #     result["errors"].append("한국어 비율 낮음")
+    #     result["pass"] = False
 
     # 6. forbidden pattern
     for pattern in FORBIDDEN_PATTERNS:
