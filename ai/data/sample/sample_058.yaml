@@ -1,0 +1,16 @@
+main_complaint:
+암 투병 이후 가족 부담과 정서적 피로 지속
+
+core_topics:
+- 암투병
+- 가족부담
+- 경제스트레스
+- 부모돌봄
+
+next_session_notes:
+가족 역할 부담과 죄책감 구조 탐색 필요
+
+prompt_adjustment:
+- caregiver_burden
+- emotional_validation
+- stress_processing

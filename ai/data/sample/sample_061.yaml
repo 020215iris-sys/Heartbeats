@@ -1,0 +1,16 @@
+main_complaint:
+대인관계 상처 경험 이후 낮은 자신감과 불안 지속
+
+core_topics:
+- 학교폭력
+- 관계외상
+- 자신감저하
+- 학업압박
+
+next_session_notes:
+청소년기 관계외상이 현재 불안에 미친 영향 탐색 필요
+
+prompt_adjustment:
+- trauma_sensitive
+- confidence_building
+- emotional_validation

@@ -1,6 +1,6 @@
-from router import route_prompt
-from llm import generate_response
-from validator import contains_foreign
+from ai.archive.router import route_prompt
+from ai.app.llm import generate_response
+from ai.archive.validator import contains_foreign
 
 
 def load_prompt(prompt_name):
