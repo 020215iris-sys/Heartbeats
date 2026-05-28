@@ -1,0 +1,30 @@
+# 상담 원문 데이터
+data/transcripts/
+
+# 생성된 학습 데이터셋
+data/train_dataset.jsonl
+data/*.jsonl
+
+# 모델 결과물
+models/
+checkpoints/
+
+# 벡터DB / 캐시
+chroma_db/
+.chroma/
+
+# 임베딩 캐시
+embeddings_cache/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# 환경변수
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VSCode
+.vscode/
