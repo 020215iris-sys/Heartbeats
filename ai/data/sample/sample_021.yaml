@@ -1,0 +1,16 @@
+main_complaint:
+자녀 양육과 진로 선택에 대한 부담과 불안 지속
+
+core_topics:
+- 양육부담
+- 수행불안
+- 진로탐색
+- 미래불안
+
+next_session_notes:
+양육 압박감과 자기 기대 수준의 연결 탐색 필요
+
+prompt_adjustment:
+- emotion_validation
+- anxiety_support
+- self_efficacy_support

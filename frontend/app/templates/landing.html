@@ -38,7 +38,7 @@
 
   {# 체험 중인 게스트: 남은 메시지 강조 + 회원가입 유도 #}
   <div class="mt-8 flex flex-col items-center gap-3">
-    <a href="#" class="rounded-lg bg-brand-600 px-6 py-3 text-white font-medium hover:bg-brand-700 transition">
+    <a href="{{ url_for('chat.room') }}" class="rounded-lg bg-brand-600 px-6 py-3 text-white font-medium hover:bg-brand-700 transition">
       대화 계속하기
     </a>
     <p class="text-sm text-slate-600">
@@ -54,7 +54,7 @@
 
   {# 로그인 상태 #}
   <div class="mt-8 flex justify-center gap-3">
-    <a href="#" class="rounded-lg bg-brand-600 px-5 py-2.5 text-white hover:bg-brand-700">
+    <a href="{{ url_for('chat.room') }}" class="rounded-lg bg-brand-600 px-5 py-2.5 text-white hover:bg-brand-700">
       상담 이어가기
     </a>
   </div>

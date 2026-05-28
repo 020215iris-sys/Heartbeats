@@ -20,6 +20,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, session
 from ..forms.chat import ChatMessageForm
 from ..services import guest as guest_svc
 from ..services.personas import get_persona
+from ..services import api_client
 
 bp = Blueprint("chat", __name__)
 
@@ -107,14 +108,12 @@ def room():
         if is_guest:
             guest_svc.increment_message_count()
 
-        # ===== 3. AI 응답 (지금은 mock) =====
-        # TODO: 백엔드 + AI 연동 시 아래로 교체
-        #     ai_reply = api_client.send_chat_message(
-        #         user_message=user_message,
-        #         history=_get_messages(),
-        #         user_id=session.get("user_id"),
-        #     )
-        ai_reply = _mock_ai_reply(user_message)
+        # ===== 3. AI 응답 (백엔드 /chat 호출) =====
+        ai_reply = api_client.send_chat_message(
+            user_message=user_message,
+            history=_get_messages(),
+            user_id=session.get("user_id"),
+        )
         _append_message("assistant", ai_reply)
 
         # PRG 패턴: POST 후 GET으로 redirect → 새로고침해도 중복 전송 안 됨

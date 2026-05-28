@@ -1,0 +1,86 @@
+{# ==========================================================================
+   검진 결과 화면.
+   라우트(survey.result)가 세션에서 꺼낸 result를 표시.
+   진단 데이터는 디스크 저장 없이 세션에만 임시 보관(민감정보, 백엔드 영역).
+   ========================================================================== #}
+
+{% extends "base.html" %}
+
+{% block title %}검진 결과 · 하트비트{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+
+  {# 심각도 코드 → Tailwind 색 매핑.
+     Jinja가 먼저 렌더해서 literal 클래스가 되므로 CDN JIT이 인식함 #}
+  {% set sev_styles = {
+    'high':   {'card': 'border-red-200 bg-red-50',     'badge': 'bg-red-100 text-red-700',     'label': '높음'},
+    'medium': {'card': 'border-amber-200 bg-amber-50', 'badge': 'bg-amber-100 text-amber-700', 'label': '중간'},
+    'low':    {'card': 'border-emerald-200 bg-emerald-50','badge': 'bg-emerald-100 text-emerald-700','label': '낮음'}
+  } %}
+  {% set has_high = result.severities_by_condition.values()
+                    | selectattr('code', 'equalto', 'high') | list | length > 0 %}
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-slate-900">검진 결과</h1>
+    <p class="mt-2 text-sm leading-relaxed text-slate-600">
+      아래는 응답을 바탕으로 한 참고용 결과예요.
+      <strong class="text-slate-700">의학적 진단이 아니며</strong>,
+      정확한 평가는 전문가 상담이 필요해요.
+    </p>
+  </div>
+
+  {# 영역별 결과 카드 #}
+  <div class="space-y-3">
+    {% for condition, sev in result.severities_by_condition.items() %}
+      {% set style = sev_styles.get(sev.code, sev_styles['low']) %}
+      <div class="rounded-xl border p-4 {{ style.card }}">
+        <div class="flex items-center justify-between">
+          <span class="font-medium text-slate-900">{{ condition }}</span>
+          <span class="rounded-full px-2.5 py-0.5 text-xs font-semibold {{ style.badge }}">
+            {{ sev.label or style.label }}
+          </span>
+        </div>
+        <div class="mt-1 text-xs text-slate-500">점수 {{ sev.score }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# 추가 확인 권장 영역 #}
+  {% if result.follow_ups_needed %}
+    <div class="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4">
+      <div class="text-sm font-medium text-brand-800">추가로 살펴보면 좋은 영역</div>
+      <p class="mt-1 text-sm text-brand-700">
+        {{ result.follow_ups_needed | join(', ') }} — 상담에서 이 부분을 함께 이야기해볼게요.
+      </p>
+    </div>
+  {% endif %}
+
+  {# 위험도 높음이면 1393 안내를 강하게 #}
+  {% if has_high %}
+    <div class="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+      <p class="text-sm text-red-800">
+        지금 많이 힘드시다면 혼자 견디지 않으셔도 돼요.
+        자살예방상담전화
+        <a href="tel:1393" class="font-bold underline">1393</a>
+        에서 24시간 도움을 받을 수 있어요.
+      </p>
+    </div>
+  {% endif %}
+
+  {# 다음 단계 — 채팅으로 연결 #}
+  <div class="mt-8 space-y-3">
+    <a href="{{ url_for('chat.room') }}"
+       class="block w-full rounded-xl bg-brand-600 px-4 py-3 text-center text-sm
+              font-semibold text-white hover:bg-brand-700 active:scale-[0.99] transition">
+      이 결과로 AI 상담 시작하기
+    </a>
+    <a href="{{ url_for('survey.initial') }}"
+       class="block w-full rounded-xl border border-slate-300 px-4 py-3 text-center
+              text-sm font-medium text-slate-600 hover:bg-slate-50 transition">
+      설문 다시 하기
+    </a>
+  </div>
+
+</div>
+{% endblock %}
