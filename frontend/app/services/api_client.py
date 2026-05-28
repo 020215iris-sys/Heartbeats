@@ -1,43 +1,46 @@
 """
 백엔드 API 호출 레이어.
-지금은 user_storage(CSV)를 백엔드처럼 다루는 MVP 구현.
-나중에 송지현 님 FastAPI 붙으면 user_storage 호출을 requests.post(...)로 교체.
+FastAPI 백엔드(API_BASE_URL)와 HTTP로 통신.
+주소가 바뀌면 .env의 API_BASE_URL만 수정하면 됨.
 """
 
-import secrets
-from . import user_storage
+import requests
+from flask import current_app
 from . import diagnosis_storage
+
 
 class SignupError(Exception):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
 
-def _generate_token(role: str) -> str:
-    """임시 세션 토큰. 진짜 백엔드 붙으면 JWT 발급은 백엔드가 함."""
-    return f"local-{role}-{secrets.token_urlsafe(16)}"
 
-
-def _build_session_payload(user: dict) -> dict:
-    """라우트가 세션에 저장할 형태로 변환."""
-    return {
-        "access_token": _generate_token(user["role"]),
-        "id": user["id"],
-        "email": user["email"],
-        "nickname": user["nickname"],
-        "role": user["role"],
-    }
+def _base_url() -> str:
+    return current_app.config["API_BASE_URL"]
 
 
 def login(email: str, password: str, role: str) -> dict | None:
-    """로그인. 이메일·비번·역할 검증."""
-    user = user_storage.verify_password(email, password)
-    if user is None:
+    """로그인. 성공 시 세션 payload 반환, 실패(인증 오류·서버 오류) 시 None."""
+    try:
+        res = requests.post(
+            f"{_base_url()}/auth/login",
+            json={"email": email, "password": password, "role": role},
+            timeout=5,
+        )
+    except requests.RequestException:
         return None
-    # 가입 시 역할과 로그인 시 역할 불일치 차단
-    if user["role"] != role:
+
+    if not res.ok:
         return None
-    return _build_session_payload(user)
+
+    data = res.json()
+    return {
+        "access_token": data["access_token"],
+        "id": data["id"],
+        "email": data["email"],
+        "nickname": data["nickname"],
+        "role": data["role"],
+    }
 
 
 def signup(
@@ -46,29 +49,62 @@ def signup(
     role: str,
     nickname: str,
     phone_number: str,
-) -> dict: 
+) -> dict:
     """
     가입 성공 시 payload 반환.
-    실패 시 SignupError(code=...) 를 raise:
+    실패 시 SignupError(code=...) raise:
       - "email_taken": 이메일 중복
       - "phone_taken": 휴대폰 번호 중복
+      - "server_error": 네트워크·서버 오류
     """
-    if user_storage.email_exists(email):
-        raise SignupError("email_taken")
-    if user_storage.phone_exists(phone_number):
-        raise SignupError("phone_taken")
+    try:
+        res = requests.post(
+            f"{_base_url()}/auth/signup",
+            json={
+                "email": email,
+                "password": password,
+                "role": role,
+                "nickname": nickname,
+                "phone_number": phone_number,
+            },
+            timeout=5,
+        )
+    except requests.RequestException as exc:
+        raise SignupError("server_error") from exc
 
-    user = user_storage.create_user(
-        email=email,
-        password=password,
-        nickname=nickname,
-        role=role,
-        phone_number=phone_number,
-    )
+    if res.status_code == 409:
+        raise SignupError(res.json().get("detail", "server_error"))
+    if not res.ok:
+        raise SignupError("server_error")
 
-    payload = _build_session_payload(user)
-    payload["needs_guardian_link"] = (role == "guardian")
-    return payload
+    data = res.json()
+    return {
+        "access_token": data["access_token"],
+        "id": data["id"],
+        "email": data["email"],
+        "nickname": data["nickname"],
+        "role": data["role"],
+        "needs_guardian_link": data.get("needs_guardian_link", False),
+    }
+
+
+def send_chat_message(user_message: str, history: list, user_id: str | None) -> str:
+    """
+    AI 채팅 메시지 전송. 백엔드 /chat 호출 후 응답 텍스트 반환.
+    연결 실패 시 안내 문구 반환.
+    """
+    try:
+        res = requests.post(
+            f"{_base_url()}/chat",
+            json={"message": user_message},
+            timeout=15,
+        )
+        if res.ok:
+            return res.json().get("reply", "응답을 받지 못했어요.")
+    except requests.RequestException:
+        pass
+    return "현재 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요."
+
 
 def save_diagnosis(
     user_id: str | None,
@@ -79,23 +115,8 @@ def save_diagnosis(
 ) -> dict:
     """
     진단 결과 저장.
-    백엔드 붙으면 requests.post(...)로 교체. 호출하는 라우트는 손 안 댐.
+    TODO: 백엔드에 POST /diagnoses 엔드포인트 추가되면 HTTP 호출로 교체.
     """
-    # TODO: 백엔드 붙으면 아래로 교체
-    # res = requests.post(
-    #     f"{current_app.config['API_BASE_URL']}/diagnoses",
-    #     json={
-    #         "user_id": user_id,
-    #         "instrument_code": instrument_code,
-    #         "scores": scores,
-    #         "severities": severities,
-    #         "follow_ups": follow_ups,
-    #     },
-    #     headers={"Authorization": f"Bearer {session.get('access_token')}"},
-    #     timeout=5,
-    # )
-    # return res.json()
-
     return diagnosis_storage.save(
         user_id=user_id,
         instrument_code=instrument_code,
@@ -106,6 +127,6 @@ def save_diagnosis(
 
 
 def get_latest_diagnosis(user_id: str) -> dict | None:
-    """사용자의 가장 최근 진단 조회. 채팅 페이지에서 페르소나 결정 시 사용 예정."""
-    # TODO: 백엔드 붙으면 requests.get(...)로 교체
+    """사용자의 가장 최근 진단 조회."""
+    # TODO: 백엔드 GET /diagnoses 엔드포인트 붙으면 교체
     return diagnosis_storage.find_latest_by_user(user_id)

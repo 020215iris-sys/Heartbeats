@@ -1,0 +1,74 @@
+==============================================================
+백엔드/DB 수정이 필요한 항목 (프론트엔드 연결 테스트 차단 원인)
+==============================================================
+
+[문제 요약]
+백엔드 API /auth/signup 호출 시 500 에러 발생.
+원인: DB init SQL 스크립트의 users 테이블 스키마가
+      백엔드 models.py 의 User 모델과 불일치.
+
+--------------------------------------------------------------
+[수정 필요 파일 1]
+파일: db/general/init/02_users.sql
+
+현재 users 테이블에 없는 컬럼:
+  - birth_date  DATE          (nullable)
+  - gender      VARCHAR(20)   (nullable)
+  - phone_number 에 UNIQUE 제약 없음
+
+수정 후 CREATE TABLE 예시:
+
+CREATE TABLE users (
+    id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           VARCHAR(255) NOT NULL UNIQUE,
+    nickname        VARCHAR(50)  NOT NULL,
+    hashed_password VARCHAR(255) NOT NULL,
+    phone_number    VARCHAR(20)  UNIQUE,
+    birth_date      DATE,
+    gender          VARCHAR(20),
+    role            VARCHAR(20)  NOT NULL DEFAULT 'user',
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    last_login_at   TIMESTAMPTZ,
+    deleted_at      TIMESTAMPTZ
+);
+
+참고: backend/models.py 의 User 클래스 기준
+--------------------------------------------------------------
+
+[수정 후 반드시 실행할 명령]
+(DB 볼륨을 초기화해야 새 스키마가 적용됨)
+
+  cd C:/project/Heartbeats
+  docker compose down -v
+  docker compose up -d db_general db_sensitive db_audit
+
+그 다음 백엔드 재시작:
+  cd backend
+  uvicorn backend_main:app --host 0.0.0.0 --port 8000
+
+--------------------------------------------------------------
+[수정 필요 항목 2] AI 시스템 프롬프트 보강
+파일: backend/backend_main.py  (또는 AI 담당자 영역)
+
+현재 시스템 프롬프트:
+  {"role": "system", "content": "당신은 심리 상담사입니다."}
+
+문제: 영어 입력 시 AI가 일본어로 응답하는 현상 확인됨.
+      한국어 전용 서비스이므로 반드시 한국어로만 답변하도록 지시 필요.
+
+권장 프롬프트 (예시):
+  "당신은 한국어로만 대화하는 따뜻한 심리 상담사입니다.
+   사용자의 언어에 관계없이 반드시 한국어로만 응답하세요.
+   공감하고 경청하는 태도로 대화해주세요."
+
+--------------------------------------------------------------
+[참고: 현재 백엔드 JWT 환경변수 불일치]
+파일: backend/.env.example 에는 JWT_SECRET 으로 되어 있으나
+      backend/routers/auth.py 는 JWT_SECRET_KEY 를 읽음.
+
+  os.getenv("JWT_SECRET_KEY")  <-- auth.py 코드
+
+backend/.env 에 JWT_SECRET_KEY 로 기입되어 있어야 함.
+(이미 backend/.env 에 JWT_SECRET_KEY 로 작성되어 있으므로 현재는 OK)
+==============================================================
