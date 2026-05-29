@@ -27,8 +27,10 @@ class User(BaseGeneral):
     nickname         = Column(String, nullable=False)
     hashed_password  = Column(String, nullable=False)
     phone_number     = Column(String, nullable=True)
-    role             = Column(String, default="user")       # user / admin 등
+    role             = Column(String, default="user")
     is_active        = Column(Boolean, default=True)
+    gender           = Column(String, nullable=True)   # ← 추가
+    birth_date       = Column(Date, nullable=True)     # ← 추가
     created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login_at    = Column(DateTime(timezone=True), nullable=True)
     deleted_at       = Column(DateTime(timezone=True), nullable=True)
@@ -44,7 +46,7 @@ class Session(BaseGeneral):
     ip_address    = Column(INET, nullable=True)
     expires_at    = Column(DateTime(timezone=True), nullable=False)
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    revoked_at    = Column(DateTime(timezone=True), nullable=True)  # 회의에서 추가 결정
+    revoked_at    = Column(DateTime(timezone=True), nullable=True)
 
 
 class GuardianConsent(BaseGeneral):
@@ -65,13 +67,13 @@ class GuardianConsent(BaseGeneral):
 class CategoryCatalog(BaseSensitive):
     __tablename__ = "category_catalog"
 
-    category_code  = Column(String, primary_key=True)   # ex) "PHQ9", "GAD7"
-    display_name   = Column(String, nullable=False)      # ex) "우울 척도"
-    instrument     = Column(String, nullable=False)      # ex) "PHQ-9"
+    category_code  = Column(String, primary_key=True)
+    display_name   = Column(String, nullable=False)
+    instrument     = Column(String, nullable=False)
     instrument_ver = Column(String, nullable=True)
     item_count     = Column(SmallInteger, nullable=False)
     max_score      = Column(SmallInteger, nullable=False)
-    severity_rule  = Column(JSONB, nullable=True)        # 점수 구간 정의
+    severity_rule  = Column(JSONB, nullable=True)
     is_active      = Column(Boolean, default=True)
 
 
@@ -79,9 +81,9 @@ class Classification(BaseSensitive):
     __tablename__ = "classifications"
 
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id             = Column(UUID(as_uuid=True), nullable=False)  # FK 논리 (General DB)
-    compound_flags      = Column(JSONB, nullable=True)                # 복합 질환 플래그
-    selected_prompt_key = Column(String, nullable=True)               # 선택된 프롬프트 키
+    user_id             = Column(UUID(as_uuid=True), nullable=False)
+    compound_flags      = Column(JSONB, nullable=True)
+    selected_prompt_key = Column(String, nullable=True)
     created_at          = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     deleted_at          = Column(DateTime(timezone=True), nullable=True)
 
@@ -94,10 +96,10 @@ class ClassificationResult(BaseSensitive):
     category_code     = Column(String, ForeignKey("category_catalog.category_code"), nullable=False)
     instrument        = Column(String, nullable=False)
     instrument_ver    = Column(String, nullable=True)
-    responses         = Column(JSONB, nullable=True)      # 문항별 응답 저장
+    responses         = Column(JSONB, nullable=True)
     total_score       = Column(SmallInteger, nullable=True)
-    severity          = Column(String, nullable=True)     # mild / moderate / severe 등
-    score_delta       = Column(SmallInteger, nullable=True)  # 이전 회차 대비 점수 변화
+    severity          = Column(String, nullable=True)
+    score_delta       = Column(SmallInteger, nullable=True)
     created_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -105,9 +107,9 @@ class CounselingSession(BaseSensitive):
     __tablename__ = "counseling_sessions"
 
     id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id           = Column(UUID(as_uuid=True), nullable=False)               # FK 논리 (General DB)
+    user_id           = Column(UUID(as_uuid=True), nullable=False)
     classification_id = Column(UUID(as_uuid=True), ForeignKey("classifications.id"), nullable=True)
-    persona_type      = Column(String, default="empathy")  # empathy / coaching / neutral
+    persona_type      = Column(String, default="empathy")
     started_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     ended_at          = Column(DateTime(timezone=True), nullable=True)
     is_active         = Column(Boolean, default=True)
@@ -119,12 +121,12 @@ class Conversation(BaseSensitive):
 
     id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id        = Column(UUID(as_uuid=True), ForeignKey("counseling_sessions.id"), nullable=False)
-    user_id           = Column(UUID(as_uuid=True), nullable=False)   # FK 논리 (General DB)
-    role              = Column(String, nullable=False)                # user / assistant
-    message_type      = Column(String, default="text")               # text / system / crisis / summary
-    encrypted_content = Column(Text, nullable=False)                 # 1차: 평문 / 추후 AES-256
-    encryption_key_id = Column(String, default="none")              # 1차: none / 추후 키 ID
-    crisis_score      = Column(Float, nullable=True)                 # 0.0 ~ 1.0
+    user_id           = Column(UUID(as_uuid=True), nullable=False)
+    role              = Column(String, nullable=False)
+    message_type      = Column(String, default="text")
+    encrypted_content = Column(Text, nullable=False)
+    encryption_key_id = Column(String, default="none")
+    crisis_score      = Column(Float, nullable=True)
     created_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     deleted_at        = Column(DateTime(timezone=True), nullable=True)
 
@@ -134,13 +136,13 @@ class Summary(BaseSensitive):
 
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id         = Column(UUID(as_uuid=True), ForeignKey("counseling_sessions.id"), nullable=False)
-    user_id            = Column(UUID(as_uuid=True), nullable=False)  # FK 논리 (General DB)
-    main_complaint     = Column(Text, nullable=True)                 # 주요 호소 내용
-    risk_level         = Column(String, default="low")               # low / medium / high
-    suicidal_mentioned = Column(Boolean, default=False)              # 자살 사고 언급 여부
-    core_topics        = Column(Text, nullable=True)                 # 핵심 주제
-    next_session_notes = Column(Text, nullable=True)                 # 다음 상담 이어갈 내용
-    prompt_adjustment  = Column(String, nullable=True)               # 권장 상담 방향 조정
+    user_id            = Column(UUID(as_uuid=True), nullable=False)
+    main_complaint     = Column(Text, nullable=True)
+    risk_level         = Column(String, default="low")
+    suicidal_mentioned = Column(Boolean, default=False)
+    core_topics        = Column(Text, nullable=True)
+    next_session_notes = Column(Text, nullable=True)
+    prompt_adjustment  = Column(String, nullable=True)
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -160,10 +162,10 @@ class CrisisEvent(BaseSensitive):
     __tablename__ = "crisis_events"
 
     id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id           = Column(UUID(as_uuid=True), nullable=False)   # FK 논리 (General DB)
+    user_id           = Column(UUID(as_uuid=True), nullable=False)
     conversation_id   = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False)
     crisis_score      = Column(Float, nullable=False)
-    severity          = Column(String, nullable=False)               # warning / crisis
+    severity          = Column(String, nullable=False)
     action_taken      = Column(String, nullable=True)
     guardian_notified = Column(Boolean, default=False)
     resolved          = Column(Boolean, default=False)
@@ -178,9 +180,9 @@ class AuditLogGeneral(BaseAudit):
     __tablename__ = "audit_logs_general"
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
-    user_id       = Column(UUID(as_uuid=True), nullable=True)   # FK 논리 (General DB)
-    action        = Column(String, nullable=False)               # CREATE / READ / UPDATE / DELETE
-    resource_type = Column(String, nullable=False)               # USER / SESSION 등
+    user_id       = Column(UUID(as_uuid=True), nullable=True)
+    action        = Column(String, nullable=False)
+    resource_type = Column(String, nullable=False)
     resource_id   = Column(UUID(as_uuid=True), nullable=True)
     ip_address    = Column(INET, nullable=True)
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -190,9 +192,9 @@ class AuditLogSensitive(BaseAudit):
     __tablename__ = "audit_logs_sensitive"
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
-    user_id       = Column(UUID(as_uuid=True), nullable=True)   # FK 논리 (General DB)
-    action        = Column(String, nullable=False)               # CREATE / READ / UPDATE / DELETE
-    resource_type = Column(String, nullable=False)               # CONVERSATION / SUMMARY 등
+    user_id       = Column(UUID(as_uuid=True), nullable=True)
+    action        = Column(String, nullable=False)
+    resource_type = Column(String, nullable=False)
     resource_id   = Column(UUID(as_uuid=True), nullable=True)
     ip_address    = Column(INET, nullable=True)
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -15,16 +15,17 @@ from routers.auth import verify_access_token
 
 
 # ==========================================
-# 서버 시작/종료 시 실행될 로직 (DB 테이블 생성)
+# 서버 시작/종료 시 실행될 로직
+# checkfirst=True → 테이블 이미 있으면 스킵
 # ==========================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine_general.begin() as conn:
-        await conn.run_sync(BaseGeneral.metadata.create_all)
+        await conn.run_sync(BaseGeneral.metadata.create_all, checkfirst=True)
     async with engine_sensitive.begin() as conn:
-        await conn.run_sync(BaseSensitive.metadata.create_all)
+        await conn.run_sync(BaseSensitive.metadata.create_all, checkfirst=True)
     async with engine_audit.begin() as conn:
-        await conn.run_sync(BaseAudit.metadata.create_all)
+        await conn.run_sync(BaseAudit.metadata.create_all, checkfirst=True)
     yield
 
 
@@ -63,8 +64,8 @@ def root():
 async def chat(
     body: Message,
     authorization: str = Header(...),
-    db_sensitive: AsyncSession = Depends(get_db_sensitive),  # ← 수정: next() 대신 Depends()
-    db_audit: AsyncSession = Depends(get_db_audit)           # ← 수정: next() 대신 Depends()
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    db_audit: AsyncSession = Depends(get_db_audit)
 ):
     # 1. JWT 토큰에서 user_id 꺼내기
     token = authorization.replace("Bearer ", "")
@@ -86,7 +87,7 @@ async def chat(
         user_id=uuid.UUID(current_user["user_id"]),
         role="user",
         message_type="text",
-        encrypted_content=body.message,  # 1차: 평문 저장
+        encrypted_content=body.message,
         encryption_key_id="none"
     )
     db_sensitive.add(user_msg)
@@ -97,7 +98,7 @@ async def chat(
         user_id=uuid.UUID(current_user["user_id"]),
         role="assistant",
         message_type="text",
-        encrypted_content=reply,         # 1차: 평문 저장
+        encrypted_content=reply,
         encryption_key_id="none"
     )
     db_sensitive.add(ai_msg)

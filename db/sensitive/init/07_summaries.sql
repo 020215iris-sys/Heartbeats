@@ -8,9 +8,9 @@ CREATE TABLE summaries (
     main_complaint     TEXT,                         -- 주요 호소 내용
     risk_level         VARCHAR(20),                  -- 낮음/중간/높음
     suicidal_mentioned BOOLEAN     NOT NULL DEFAULT FALSE,
-    core_topics        JSONB,                         -- 핵심 주제
+    core_topics        TEXT,                         -- 핵심 주제
     next_session_notes TEXT,                         -- 다음 상담 이어갈 내용
-    prompt_adjustment  JSONB,                 -- 권장 상담 방향 조정
+    prompt_adjustment  TEXT,                 -- 권장 상담 방향 조정
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_sum_session_id ON summaries(session_id);
