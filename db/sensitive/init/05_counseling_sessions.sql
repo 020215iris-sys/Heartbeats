@@ -4,7 +4,7 @@
 CREATE TABLE counseling_sessions (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID        NOT NULL,          -- 논리 FK → general.users.id
-    classification_id UUID        NOT NULL REFERENCES classifications(id),
+    classification_id UUID        REFERENCES classifications(id),
     persona_type      VARCHAR(30),                   -- 상담사 페르소나
     started_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at          TIMESTAMPTZ,                   -- 진행 중이면 NULL
