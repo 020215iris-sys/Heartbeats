@@ -179,3 +179,29 @@ docker exec -i heartbeat_db_sensitive psql -U heartbeat -d heartbeat_sensitive <
 
 ### 초기화
 다시 처음부터 하고 싶으면 `down -v`로 DB 비우고 위 명령 재실행.
+
+
+
+## 10. 백업 / 복구
+
+### 백업
+```bash
+bash scripts/backup.sh
+```
+→ `backups/YYYY-MM-DD_HHMMSS/` 폴더에 3개 DB가 SQL 덤프로 저장됩니다.
+
+### 복구
+```bash
+bash scripts/restore.sh backups/<폴더명>
+```
+→ 안전 확인 후 해당 시점으로 3개 DB가 복구됩니다.
+
+### 권장 정책
+- **개발**: 위험한 작업(`down -v`, 큰 스키마 변경) 전 수동 백업
+- **알파/베타**: 매일 1회 자동 백업, 7일 보존
+- **운영(향후)**: 매시간 증분 + 일일 전체, 30일 보존, **백업 파일도 암호화**
+- **민감 DB**: 별도 보존 정책 + 접근 통제 강화
+
+### ⚠️ 주의
+- `backups/`는 `.gitignore`에 포함되어 있습니다. Git에 절대 올리지 마세요.
+- 운영 환경에선 백업 파일도 암호화(GPG 등) 후 별도 저장소로 옮기는 게 표준입니다.
