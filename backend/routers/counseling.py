@@ -12,6 +12,8 @@ import uuid
 import json
 import os
 
+from summary_service import request_summary
+
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
 
 # Groq 클라이언트 (요약용 임시)
@@ -317,30 +319,20 @@ async def end_session(
             for m in messages
         ])
 
-        # 5. Groq한테 요약 요청 (임시 - 추후 Kanana+LoRA로 교체 예정)
-        summary_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """다음 상담 내용을 아래 JSON 형식으로만 요약하세요.
-설명 없이 JSON만 출력하세요.
-{
-    "main_complaint": "주요 호소 내용",
-    "risk_level": "low 또는 medium 또는 high",
-    "suicidal_mentioned": true 또는 false,
-    "core_topics": "핵심 주제",
-    "next_session_notes": "다음 상담 이어갈 내용",
-    "prompt_adjustment": "권장 상담 방향 조정"
-}"""
-                },
-                {"role": "user", "content": transcript}
-            ]
-        )
+        # 5. LoRA summary 요청
+        summary_result = request_summary(transcript)
 
-        # 6. JSON 파싱
-        summary_text = summary_response.choices[0].message.content
-        summary_data = json.loads(summary_text)
+        print(summary_result)
+
+        summary_data = {
+            "main_complaint": "",
+            "risk_level": "low",
+            "suicidal_mentioned": False,
+            "core_topics": "",
+            "next_session_notes": "",
+            "prompt_adjustment": ""
+        }
+       
 
         # 7. summaries 테이블에 저장
         new_summary = Summary(
