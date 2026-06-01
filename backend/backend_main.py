@@ -81,38 +81,38 @@ async def chat(
     )
     reply = response.choices[0].message.content
 
-    # 3. 사용자 메시지 conversations에 저장
-    user_msg = Conversation(
-        session_id=uuid.UUID(body.session_id),
-        user_id=uuid.UUID(current_user["user_id"]),
-        role="user",
-        message_type="text",
-        encrypted_content=body.message,
-        encryption_key_id="none"
-    )
-    db_sensitive.add(user_msg)
+    # # 3. 사용자 메시지 conversations에 저장
+    # user_msg = Conversation(
+    #     session_id=uuid.UUID(body.session_id),
+    #     user_id=uuid.UUID(current_user["user_id"]),
+    #     role="user",
+    #     message_type="text",
+    #     encrypted_content=body.message,  # 1차: 평문 저장
+    #     encryption_key_id="none"
+    # )
+    # db_sensitive.add(user_msg)
 
-    # 4. AI 응답도 conversations에 저장
-    ai_msg = Conversation(
-        session_id=uuid.UUID(body.session_id),
-        user_id=uuid.UUID(current_user["user_id"]),
-        role="assistant",
-        message_type="text",
-        encrypted_content=reply,
-        encryption_key_id="none"
-    )
-    db_sensitive.add(ai_msg)
+    # # 4. AI 응답도 conversations에 저장
+    # ai_msg = Conversation(
+    #     session_id=uuid.UUID(body.session_id),
+    #     user_id=uuid.UUID(current_user["user_id"]),
+    #     role="assistant",
+    #     message_type="text",
+    #     encrypted_content=reply,         # 1차: 평문 저장
+    #     encryption_key_id="none"
+    # )
+    # db_sensitive.add(ai_msg)
 
-    # 5. 감사 로그
-    audit_log = AuditLogSensitive(
-        user_id=uuid.UUID(current_user["user_id"]),
-        action="CREATE",
-        resource_type="CONVERSATION",
-        resource_id=user_msg.id
-    )
-    db_audit.add(audit_log)
+    # # 5. 감사 로그
+    # audit_log = AuditLogSensitive(
+    #     user_id=uuid.UUID(current_user["user_id"]),
+    #     action="CREATE",
+    #     resource_type="CONVERSATION",
+    #     resource_id=user_msg.id
+    # )
+    # db_audit.add(audit_log)
 
-    await db_sensitive.commit()
-    await db_audit.commit()
+    # await db_sensitive.commit()
+    # await db_audit.commit()
 
     return {"reply": reply}

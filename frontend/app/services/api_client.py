@@ -5,7 +5,8 @@ FastAPI 백엔드(API_BASE_URL)와 HTTP로 통신.
 """
 
 import requests
-from flask import current_app
+import uuid
+from flask import current_app, session as flask_session
 from . import diagnosis_storage
 
 
@@ -93,14 +94,35 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
     AI 채팅 메시지 전송. 백엔드 /chat 호출 후 응답 텍스트 반환.
     연결 실패 시 안내 문구 반환.
     """
+    from flask import session as flask_session
+
+    # JWT 토큰 꺼내기 — 없으면 로그인 안 된 상태
+    access_token = flask_session.get("access_token")
+    # session_id 꺼내기 — 없으면 새로 만들어서 세션에 저장
+    if "chat_session_id" not in flask_session:
+        flask_session["chat_session_id"] = str(uuid.uuid4())
+    chat_session_id = flask_session["chat_session_id"]
+
+    if not access_token:
+        return "이야기해주셔서 감사해요. 체험 모드에서는 임시 응답이에요. 회원가입 후 실제 AI와 대화해보세요."
+
     try:
         res = requests.post(
             f"{_base_url()}/chat",
-            json={"message": user_message},
+            json={
+                "message": user_message,
+                "session_id": chat_session_id,  # 백엔드 필수값
+            },
+            headers={
+                "Authorization": f"Bearer {access_token}"  # JWT 인증
+            },
             timeout=15,
         )
         if res.ok:
-            return res.json().get("reply", "응답을 받지 못했어요.")
+            return res.json().get("reply", "응답을 받지 못했어요.")\
+        # 401이면 토큰 만료
+        if res.status_code == 401:
+            return "로그인이 만료됐어요. 다시 로그인해주세요."
     except requests.RequestException:
         pass
     return "현재 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요."
