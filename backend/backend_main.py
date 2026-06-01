@@ -15,16 +15,17 @@ from routers.auth import verify_access_token
 
 
 # ==========================================
-# 서버 시작/종료 시 실행될 로직 (DB 테이블 생성)
+# 서버 시작/종료 시 실행될 로직
+# checkfirst=True → 테이블 이미 있으면 스킵
 # ==========================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine_general.begin() as conn:
-        await conn.run_sync(BaseGeneral.metadata.create_all)
+        await conn.run_sync(BaseGeneral.metadata.create_all, checkfirst=True)
     async with engine_sensitive.begin() as conn:
-        await conn.run_sync(BaseSensitive.metadata.create_all)
+        await conn.run_sync(BaseSensitive.metadata.create_all, checkfirst=True)
     async with engine_audit.begin() as conn:
-        await conn.run_sync(BaseAudit.metadata.create_all)
+        await conn.run_sync(BaseAudit.metadata.create_all, checkfirst=True)
     yield
 
 
@@ -63,8 +64,8 @@ def root():
 async def chat(
     body: Message,
     authorization: str = Header(...),
-    db_sensitive: AsyncSession = Depends(get_db_sensitive),  # ← 수정: next() 대신 Depends()
-    db_audit: AsyncSession = Depends(get_db_audit)           # ← 수정: next() 대신 Depends()
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    db_audit: AsyncSession = Depends(get_db_audit)
 ):
     # 1. JWT 토큰에서 user_id 꺼내기
     token = authorization.replace("Bearer ", "")
