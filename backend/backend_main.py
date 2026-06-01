@@ -6,6 +6,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
 import os
+import re
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -42,11 +43,25 @@ client = OpenAI(
 )
 
 # ==========================================
+# 프롬프트 파일 로드
+# ==========================================
+PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../ai/prompts/active/general_prompt.txt")
+with open(PROMPT_PATH, "r", encoding="utf-8") as f:
+    SYSTEM_PROMPT = f.read()
+
+# ==========================================
+# 외국어 감지 함수 (ai/archive/validator.py)
+# ==========================================
+def contains_foreign(text: str) -> bool:
+    pattern = r"[一-龯ぁ-ゔァ-ヴー々〆〤a-zA-Z]"
+    return re.search(pattern, text) is not None
+
+# ==========================================
 # /chat 요청 모델
 # ==========================================
 class Message(BaseModel):
     message: str
-    session_id: str  # 어느 세션 대화인지 알아야 conversations에 저장 가능
+    session_id: str
     history: list[dict] = []  # [{"role": "user"/"assistant", "content": "..."}]
 
 # ==========================================
@@ -83,27 +98,37 @@ async def chat(
     counseling_session = result.scalar()
 
     if not counseling_session:
-        # DB에 없는 session_id면 자동으로 row 생성
-        # 프론트에서 보낸 uuid를 그대로 id로 사용해서 이후 메시지도 같은 세션에 쌓임
         counseling_session = CounselingSession(
             id=uuid.UUID(body.session_id),
             user_id=uuid.UUID(current_user["user_id"]),
-            persona_type="empathy",  # TODO: 페르소나 선택 기능 붙으면 프론트에서 받기
+            persona_type="empathy",
             is_active=True
         )
         db_sensitive.add(counseling_session)
-        await db_sensitive.flush()  # commit 전에 id 확정
+        await db_sensitive.flush()
 
     # 3. Groq한테 응답 요청 (이전 대화 history 포함)
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
-            {"role": "system", "content": "당신은 심리 상담사입니다."},
+            {"role": "system", "content": SYSTEM_PROMPT},
             *body.history,
             {"role": "user", "content": body.message}
         ]
     )
     reply = response.choices[0].message.content
+
+    # 외국어 감지 시 재요청
+    if contains_foreign(reply):
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT + "\n\n반드시 한국어로만 응답하세요. 영어나 다른 언어를 절대 사용하지 마세요."},
+                *body.history,
+                {"role": "user", "content": body.message}
+            ]
+        )
+        reply = response.choices[0].message.content
 
     # 4. 사용자 메시지 저장
     user_msg = Conversation(
