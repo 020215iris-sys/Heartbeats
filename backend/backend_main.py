@@ -14,7 +14,7 @@ from database import engine_general, engine_sensitive, engine_audit, get_db_sens
 from models import BaseGeneral, BaseSensitive, BaseAudit, Conversation, AuditLogSensitive, CounselingSession
 from routers import auth, counseling
 from routers.auth import verify_access_token
-
+from core.crypto import encrypt_content
 
 # ==========================================
 # 서버 시작/종료 시 실행될 로직
@@ -131,23 +131,25 @@ async def chat(
         reply = response.choices[0].message.content
 
     # 4. 사용자 메시지 저장
+    ciphertext, key_id = encrypt_content(body.message)
     user_msg = Conversation(
         session_id=uuid.UUID(body.session_id),
         user_id=uuid.UUID(current_user["user_id"]),
         role="user",
         message_type="text",
-        encrypted_content=body.message,
+        encrypted_content=ciphertext,
         encryption_key_id="none"
     )
     db_sensitive.add(user_msg)
 
     # 5. AI 응답 저장
+    ciphertext, key_id = encrypt_content(reply)
     ai_msg = Conversation(
         session_id=uuid.UUID(body.session_id),
         user_id=uuid.UUID(current_user["user_id"]),
         role="assistant",
         message_type="text",
-        encrypted_content=reply,
+        encrypted_content=ciphertext,
         encryption_key_id="none"
     )
     db_sensitive.add(ai_msg)
