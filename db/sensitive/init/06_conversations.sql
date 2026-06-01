@@ -8,7 +8,7 @@ CREATE TABLE conversations (
     user_id           UUID        NOT NULL,                  -- 논리 FK
     role              VARCHAR(20) NOT NULL,                  -- user / assistant
     message_type      VARCHAR(20) NOT NULL DEFAULT 'text',   -- text / voice
-    encrypted_content TEXT        NOT NULL,                  -- 암호문
+    encrypted_content BYTEA       NOT NULL,                  -- 본문(encrypted_content)은 AES-256-GCM 암호문 바이트로 저장 (W1: 투명 UTF-8 헬퍼)
     encryption_key_id VARCHAR(50) NOT NULL,                  -- 사용한 암호화 키 식별자
     crisis_score      REAL,                                  -- 위기 점수 0.0~1.0
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
