@@ -11,6 +11,7 @@ from openai import OpenAI
 import uuid
 import json
 import os
+import yaml
 
 from summary_service import request_summary
 
@@ -77,10 +78,10 @@ async def start_session(
             "is_active": new_session.is_active
         }
 
-    except Exception:
+    except Exception as e:
         await db_sensitive.rollback()
         await db_audit.rollback()
-        raise HTTPException(status_code=500, detail="상담 세션 생성 중 오류가 발생했습니다.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==========================================
@@ -133,10 +134,10 @@ async def get_session(
 CRISIS_THRESHOLD = 0.7  # 위기 임계치
 
 class SaveMessageRequest(BaseModel):
-    role: str                             # "user" or "assistant"
-    message_type: Optional[str] = "text" # text / system / crisis / summary
-    encrypted_content: str               # 1차: 평문 저장 / 추후 AES-256 암호화
-    crisis_score: Optional[float] = None # AI가 분석한 위기 점수 (0.0~1.0)
+    role: str                                  # "user" or "assistant"
+    message_type: Optional[str] = "text"       # text / system / crisis / summary
+    encrypted_content: str                     # 1차: 평문 저장 / 추후 AES-256 암호화
+    crisis_score: Optional[float] = None       # AI가 분석한 위기 점수 (0.0~1.0)
 
 
 @router.post("/sessions/{session_id}/messages")
@@ -149,7 +150,6 @@ async def save_message(
 ):
     """대화 메시지 저장 → conversations 테이블에 행 생성"""
     try:
-        # 1. 세션 존재 확인
         result = await db_sensitive.execute(
             select(CounselingSession).where(
                 CounselingSession.id == uuid.UUID(session_id),
@@ -162,20 +162,18 @@ async def save_message(
         if str(session.user_id) != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
-        # 2. 대화 메시지 저장
         new_message = Conversation(
             session_id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
             role=body.role,
             message_type=body.message_type,
-            encrypted_content=body.encrypted_content,  # 1차: 평문
-            encryption_key_id="none",                  # 1차: 암호화 미적용
+            encrypted_content=body.encrypted_content,
+            encryption_key_id="none",
             crisis_score=body.crisis_score
         )
         db_sensitive.add(new_message)
         await db_sensitive.flush()
 
-        # 3. 위기 임계치 초과 시 CrisisEvent 자동 생성
         if body.crisis_score and body.crisis_score >= CRISIS_THRESHOLD:
             crisis_event = CrisisEvent(
                 user_id=uuid.UUID(current_user["user_id"]),
@@ -187,7 +185,6 @@ async def save_message(
             )
             db_sensitive.add(crisis_event)
 
-        # 4. 감사 로그
         audit_log = AuditLogSensitive(
             user_id=uuid.UUID(current_user["user_id"]),
             action="CREATE",
@@ -210,10 +207,10 @@ async def save_message(
 
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         await db_sensitive.rollback()
         await db_audit.rollback()
-        raise HTTPException(status_code=500, detail="메시지 저장 중 오류가 발생했습니다.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==========================================
@@ -227,7 +224,6 @@ async def get_messages(
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
     """세션의 전체 대화 내역 조회"""
-    # 1. 본인 세션인지 확인
     session_result = await db_sensitive.execute(
         select(CounselingSession).where(
             CounselingSession.id == uuid.UUID(session_id),
@@ -240,7 +236,6 @@ async def get_messages(
     if str(session.user_id) != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
-    # 2. 대화 내역 조회 (시간순)
     messages_result = await db_sensitive.execute(
         select(Conversation).where(
             Conversation.session_id == uuid.UUID(session_id),
@@ -249,7 +244,6 @@ async def get_messages(
     )
     messages = messages_result.scalars().all()
 
-    # 3. 감사 로그
     audit_log = AuditLogSensitive(
         user_id=uuid.UUID(current_user["user_id"]),
         action="READ",
@@ -266,7 +260,7 @@ async def get_messages(
                 "message_id": str(m.id),
                 "role": m.role,
                 "message_type": m.message_type,
-                "content": m.encrypted_content,  # 1차: 평문 반환
+                "content": m.encrypted_content,
                 "crisis_score": m.crisis_score,
                 "created_at": m.created_at.isoformat()
             }
@@ -276,7 +270,7 @@ async def get_messages(
 
 
 # ==========================================
-# 상담 종료 + 요약 생성 (새로 추가)
+# 상담 종료 + 요약 생성
 # ==========================================
 @router.patch("/sessions/{session_id}/end")
 async def end_session(
@@ -285,9 +279,8 @@ async def end_session(
     db_sensitive: AsyncSession = Depends(get_db_sensitive),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
-    """상담 종료 → ended_at 업데이트 + Groq 요약 생성 + summaries 저장"""
+    """상담 종료 → ended_at 업데이트 + LoRA 요약 생성 + summaries 저장"""
     try:
-        # 1. 세션 존재 확인
         result = await db_sensitive.execute(
             select(CounselingSession).where(
                 CounselingSession.id == uuid.UUID(session_id),
@@ -300,11 +293,9 @@ async def end_session(
         if str(session.user_id) != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
-        # 2. 세션 종료 처리
         session.ended_at = datetime.now(timezone.utc)
         session.is_active = False
 
-        # 3. 대화 내역 전부 가져오기
         messages_result = await db_sensitive.execute(
             select(Conversation).where(
                 Conversation.session_id == uuid.UUID(session_id),
@@ -313,41 +304,68 @@ async def end_session(
         )
         messages = messages_result.scalars().all()
 
-        # 4. 대화 내역을 텍스트로 합치기
         transcript = "\n".join([
             f"{'내담자' if m.role == 'user' else '상담사'}: {m.encrypted_content}"
             for m in messages
         ])
 
-        # 5. LoRA summary 요청
-        summary_result = request_summary(transcript)
+        # 5. LoRA summary 요청 → 실패 시 기본값으로 fallback
+        try:
+            summary_result = request_summary(transcript)
+            raw_output = summary_result["output"]
 
-        print(summary_result)
+            # yaml 파싱 시도 → 실패하면 텍스트 직접 파싱  ← 수정
+            try:
+                summary_data = yaml.safe_load(raw_output)
+                if not isinstance(summary_data, dict):
+                    raise ValueError("yaml 파싱 실패")
+            except:
+                summary_data = {}
+                current_key = None
+                items = []
+                for line in raw_output.splitlines():
+                    line = line.strip()
+                    if line.endswith(":") and not line.startswith("-"):
+                        if current_key and items:
+                            summary_data[current_key] = items
+                        current_key = line[:-1]
+                        items = []
+                    elif line.startswith("-"):
+                        items.append(line[1:].strip())
+                    elif line and current_key:
+                        summary_data[current_key] = line
+                        current_key = None
+                if current_key and items:
+                    summary_data[current_key] = items
 
-        summary_data = {
-            "main_complaint": "",
-            "risk_level": "low",
-            "suicidal_mentioned": False,
-            "core_topics": "",
-            "next_session_notes": "",
-            "prompt_adjustment": ""
-        }
-       
+            if not isinstance(summary_data, dict):
+                summary_data = {}
+            summary_data.setdefault("risk_level", "low")
+            summary_data.setdefault("suicidal_mentioned", False)
 
-        # 7. summaries 테이블에 저장
+        except Exception:
+            summary_data = {
+                "main_complaint": "",
+                "risk_level": "low",
+                "suicidal_mentioned": False,
+                "core_topics": [],        # ← 빈 리스트
+                "next_session_notes": "",
+                "prompt_adjustment": {}   # ← 빈 딕셔너리
+            }
+
+        # 6. summaries 테이블에 저장
         new_summary = Summary(
             session_id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
             main_complaint=summary_data.get("main_complaint", ""),
             risk_level=summary_data.get("risk_level", "low"),
             suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
-            core_topics=summary_data.get("core_topics", ""),
+            core_topics=json.loads(summary_data.get("core_topics", "[]")) if isinstance(summary_data.get("core_topics"), str) else summary_data.get("core_topics", []),
             next_session_notes=summary_data.get("next_session_notes", ""),
-            prompt_adjustment=summary_data.get("prompt_adjustment", "")
+            prompt_adjustment=json.loads(summary_data.get("prompt_adjustment", "{}")) if isinstance(summary_data.get("prompt_adjustment"), str) else summary_data.get("prompt_adjustment", {})
         )
         db_sensitive.add(new_summary)
 
-        # 8. 감사 로그
         audit_log = AuditLogSensitive(
             user_id=uuid.UUID(current_user["user_id"]),
             action="UPDATE",
@@ -368,7 +386,7 @@ async def end_session(
 
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         await db_sensitive.rollback()
         await db_audit.rollback()
-        raise HTTPException(status_code=500, detail="세션 종료 중 오류가 발생했습니다.")
+        raise HTTPException(status_code=500, detail=str(e))
