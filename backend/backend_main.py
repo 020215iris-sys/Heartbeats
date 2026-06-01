@@ -47,6 +47,7 @@ client = OpenAI(
 class Message(BaseModel):
     message: str
     session_id: str  # 어느 세션 대화인지 알아야 conversations에 저장 가능
+    history: list[dict] = []  # [{"role": "user"/"assistant", "content": "..."}]
 
 # ==========================================
 # 라우터 등록
@@ -93,11 +94,12 @@ async def chat(
         db_sensitive.add(counseling_session)
         await db_sensitive.flush()  # commit 전에 id 확정
 
-    # 3. Groq한테 응답 요청
+    # 3. Groq한테 응답 요청 (이전 대화 history 포함)
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "system", "content": "당신은 심리 상담사입니다."},
+            *body.history,
             {"role": "user", "content": body.message}
         ]
     )

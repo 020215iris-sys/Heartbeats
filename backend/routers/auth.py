@@ -1,23 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 import bcrypt
 from database import get_db_general, get_db_audit
-from models import User, AuditLogGeneral
+from models import User, AuditLogGeneral, Session
 from sqlalchemy.future import select
-from datetime import datetime, timezone, timedelta, date  # ← date 추가
+from datetime import datetime, timezone, timedelta, date
 from jose import jwt
 from typing import Optional
 import os
+import secrets
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 # ==========================================
-# JWT 설정 (.env에서 읽어옴)
+# JWT 설정
 # ==========================================
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_HOURS = 24
 
 def create_access_token(user_id: str, role: str) -> str:
     payload = {
@@ -34,6 +36,9 @@ def verify_access_token(token: str) -> dict:
     except Exception:
         raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 토큰입니다.")
 
+def create_refresh_token() -> str:
+    return secrets.token_urlsafe(64)
+
 
 # ==========================================
 # 회원가입
@@ -45,11 +50,12 @@ class SignupRequest(BaseModel):
     nickname: str
     phone_number: str
     gender: Optional[str] = None
-    birth_date: Optional[date] = None  # ← str → date 로 변경
+    birth_date: Optional[date] = None
 
 @router.post("/signup")
 async def signup(
-    user_data: SignupRequest, 
+    request: Request,
+    user_data: SignupRequest,
     db_general: AsyncSession = Depends(get_db_general),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
@@ -75,6 +81,16 @@ async def signup(
         db_general.add(new_user)
         await db_general.flush()
 
+        refresh_token = create_refresh_token()
+        new_session = Session(
+            user_id=new_user.id,
+            refresh_token=refresh_token,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=REFRESH_TOKEN_EXPIRE_HOURS)
+        )
+        db_general.add(new_session)
+
         audit_log = AuditLogGeneral(
             user_id=new_user.id,
             action="SIGNUP",
@@ -93,7 +109,8 @@ async def signup(
             "nickname": new_user.nickname,
             "role": new_user.role,
             "needs_guardian_link": False,
-            "access_token": access_token
+            "access_token": access_token,
+            "refresh_token": refresh_token
         }
 
     except Exception as e:
@@ -112,7 +129,8 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 async def login(
-    login_data: LoginRequest, 
+    request: Request,
+    login_data: LoginRequest,
     db_general: AsyncSession = Depends(get_db_general),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
@@ -127,6 +145,16 @@ async def login(
             raise HTTPException(status_code=401, detail="이메일, 비밀번호, 또는 역할이 올바르지 않아요")
 
         user.last_login_at = datetime.now(timezone.utc)
+
+        refresh_token = create_refresh_token()
+        new_session = Session(
+            user_id=user.id,
+            refresh_token=refresh_token,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=REFRESH_TOKEN_EXPIRE_HOURS)
+        )
+        db_general.add(new_session)
 
         audit_log = AuditLogGeneral(
             user_id=user.id,
@@ -145,7 +173,8 @@ async def login(
             "nickname": user.nickname,
             "role": user.role,
             "needs_guardian_link": False,
-            "access_token": access_token
+            "access_token": access_token,
+            "refresh_token": refresh_token
         }
 
     except HTTPException:
@@ -154,3 +183,64 @@ async def login(
         await db_general.rollback()
         await db_audit.rollback()
         raise HTTPException(status_code=500, detail="로그인 처리 중 서버 오류가 발생했습니다.")
+
+
+# ==========================================
+# Access Token 재발급
+# ==========================================
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+@router.post("/refresh")
+async def refresh(
+    body: RefreshRequest,
+    db_general: AsyncSession = Depends(get_db_general)
+):
+    result = await db_general.execute(
+        select(Session).where(
+            Session.refresh_token == body.refresh_token,
+            Session.revoked_at == None,
+            Session.expires_at > datetime.now(timezone.utc)
+        )
+    )
+    session = result.scalar()
+
+    if not session:
+        raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 refresh_token입니다.")
+
+    user_result = await db_general.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar()
+
+    if not user or user.deleted_at is not None:
+        raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
+
+    access_token = create_access_token(str(user.id), user.role)
+    return {"access_token": access_token}
+
+
+# ==========================================
+# 로그아웃
+# ==========================================
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+@router.post("/logout")
+async def logout(
+    body: LogoutRequest,
+    db_general: AsyncSession = Depends(get_db_general)
+):
+    result = await db_general.execute(
+        select(Session).where(
+            Session.refresh_token == body.refresh_token,
+            Session.revoked_at == None
+        )
+    )
+    session = result.scalar()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    session.revoked_at = datetime.now(timezone.utc)
+    await db_general.commit()
+
+    return {"message": "로그아웃 되었습니다."}
