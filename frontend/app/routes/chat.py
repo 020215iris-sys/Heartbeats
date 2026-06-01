@@ -88,11 +88,9 @@ def room():
 
         # 게스트 한도 다시 체크 — 누가 한도 다 쓴 상태로 직접 POST 보내는 경우 차단
         if is_guest and not guest_svc.can_send_message():
-            flash(
-                "체험판 메시지를 모두 사용했어요. 회원가입 후 계속해주세요.",
-                "info",
-            )
-            return redirect(url_for("auth.signup"))
+            # redirect 대신 팝업 플래그만 세팅 → GET에서 팝업 표시
+            session["show_signup_modal"] = True
+            return redirect(url_for("chat.room"))
 
         # 입력값 정제 (앞뒤 공백 제거)
         user_message = form.message.data.strip()
@@ -120,13 +118,16 @@ def room():
         return redirect(url_for("chat.room"))
 
     # ===== 4. GET: 채팅 화면 렌더링 =====
+    # 팝업 플래그 꺼내기 — pop으로 꺼내면 한 번 보여주고 자동 소멸
+    show_signup_modal = session.pop("show_signup_modal", False)
+
     return render_template(
         "chat/room.html",
         form=form,
         messages=_get_messages(),
         persona=persona,
+        show_signup_modal=show_signup_modal,
     )
-
 
 @bp.route("/clear", methods=["POST"])
 def clear():

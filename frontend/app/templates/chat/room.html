@@ -167,4 +167,49 @@
   });
 </script>
 
+{# ============ 회원가입 유도 팝업 ============
+게스트 메시지 한도 초과 시 show_signup_modal=True로 렌더링됨.
+배경 클릭하면 닫히고, X 버튼으로도 닫힘.
+회원가입/로그인 버튼은 해당 페이지로 이동. ============ #}
+{% if show_signup_modal %}
+<div id="signup-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+  onclick="if(event.target===this) closeModal()">
+
+  <div class="relative bg-white rounded-2xl shadow-xl w-80 px-6 py-8 text-center">
+
+    {# 닫기 버튼 #}
+    <button onclick="closeModal()" class="absolute top-3 right-4 text-slate-400 hover:text-slate-600 text-xl"
+      aria-label="닫기">✕</button>
+
+    {# 하트 아이콘 #}
+    <div class="text-4xl mb-3">💬</div>
+
+    <h2 class="text-lg font-bold text-slate-900">체험 메시지를 모두 사용했어요</h2>
+    <p class="mt-2 text-sm text-slate-500">
+      회원가입하면 제한 없이<br>AI와 대화할 수 있어요.
+    </p>
+
+    <div class="mt-6 flex flex-col gap-2">
+      <a href="{{ url_for('auth.signup') }}" class="rounded-xl bg-brand-600 px-4 py-2.5 text-white font-medium
+                hover:bg-brand-700 transition text-sm">
+        회원가입하기
+      </a>
+      <a href="{{ url_for('auth.login') }}" class="rounded-xl border border-slate-200 px-4 py-2.5 text-slate-600
+                hover:bg-slate-50 transition text-sm">
+        이미 계정이 있어요
+      </a>
+      <button onclick="closeModal()" class="mt-1 text-xs text-slate-400 hover:text-slate-600">
+        나중에 할게요
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function closeModal() {
+    document.getElementById('signup-modal').remove();
+  }
+</script>
+{% endif %}
+
 {% endblock %}

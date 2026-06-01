@@ -8,8 +8,9 @@ load_dotenv()
 import os
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from database import engine_general, engine_sensitive, engine_audit, get_db_sensitive, get_db_audit
-from models import BaseGeneral, BaseSensitive, BaseAudit, Conversation, AuditLogSensitive
+from models import BaseGeneral, BaseSensitive, BaseAudit, Conversation, AuditLogSensitive, CounselingSession
 from routers import auth, counseling
 from routers.auth import verify_access_token
 
@@ -71,7 +72,28 @@ async def chat(
     token = authorization.replace("Bearer ", "")
     current_user = verify_access_token(token)
 
-    # 2. Groq한테 응답 요청
+    # 2. session_id로 counseling_sessions 조회 → 없으면 자동 생성
+    result = await db_sensitive.execute(
+        select(CounselingSession).where(
+            CounselingSession.id == uuid.UUID(body.session_id),
+            CounselingSession.deleted_at == None
+        )
+    )
+    counseling_session = result.scalar()
+
+    if not counseling_session:
+        # DB에 없는 session_id면 자동으로 row 생성
+        # 프론트에서 보낸 uuid를 그대로 id로 사용해서 이후 메시지도 같은 세션에 쌓임
+        counseling_session = CounselingSession(
+            id=uuid.UUID(body.session_id),
+            user_id=uuid.UUID(current_user["user_id"]),
+            persona_type="empathy",  # TODO: 페르소나 선택 기능 붙으면 프론트에서 받기
+            is_active=True
+        )
+        db_sensitive.add(counseling_session)
+        await db_sensitive.flush()  # commit 전에 id 확정
+
+    # 3. Groq한테 응답 요청
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
@@ -81,38 +103,38 @@ async def chat(
     )
     reply = response.choices[0].message.content
 
-    # # 3. 사용자 메시지 conversations에 저장
-    # user_msg = Conversation(
-    #     session_id=uuid.UUID(body.session_id),
-    #     user_id=uuid.UUID(current_user["user_id"]),
-    #     role="user",
-    #     message_type="text",
-    #     encrypted_content=body.message,  # 1차: 평문 저장
-    #     encryption_key_id="none"
-    # )
-    # db_sensitive.add(user_msg)
+    # 4. 사용자 메시지 저장
+    user_msg = Conversation(
+        session_id=uuid.UUID(body.session_id),
+        user_id=uuid.UUID(current_user["user_id"]),
+        role="user",
+        message_type="text",
+        encrypted_content=body.message,
+        encryption_key_id="none"
+    )
+    db_sensitive.add(user_msg)
 
-    # # 4. AI 응답도 conversations에 저장
-    # ai_msg = Conversation(
-    #     session_id=uuid.UUID(body.session_id),
-    #     user_id=uuid.UUID(current_user["user_id"]),
-    #     role="assistant",
-    #     message_type="text",
-    #     encrypted_content=reply,         # 1차: 평문 저장
-    #     encryption_key_id="none"
-    # )
-    # db_sensitive.add(ai_msg)
+    # 5. AI 응답 저장
+    ai_msg = Conversation(
+        session_id=uuid.UUID(body.session_id),
+        user_id=uuid.UUID(current_user["user_id"]),
+        role="assistant",
+        message_type="text",
+        encrypted_content=reply,
+        encryption_key_id="none"
+    )
+    db_sensitive.add(ai_msg)
 
-    # # 5. 감사 로그
-    # audit_log = AuditLogSensitive(
-    #     user_id=uuid.UUID(current_user["user_id"]),
-    #     action="CREATE",
-    #     resource_type="CONVERSATION",
-    #     resource_id=user_msg.id
-    # )
-    # db_audit.add(audit_log)
+    # 6. 감사 로그
+    audit_log = AuditLogSensitive(
+        user_id=uuid.UUID(current_user["user_id"]),
+        action="CREATE",
+        resource_type="CONVERSATION",
+        resource_id=user_msg.id
+    )
+    db_audit.add(audit_log)
 
-    # await db_sensitive.commit()
-    # await db_audit.commit()
+    await db_sensitive.commit()
+    await db_audit.commit()
 
     return {"reply": reply}

@@ -119,7 +119,7 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
             timeout=15,
         )
         if res.ok:
-            return res.json().get("reply", "응답을 받지 못했어요.")\
+            return res.json().get("reply", "응답을 받지 못했어요.")
         # 401이면 토큰 만료
         if res.status_code == 401:
             return "로그인이 만료됐어요. 다시 로그인해주세요."

@@ -52,10 +52,16 @@
 
   {% else %}
 
-  {# 로그인 상태 #}
-  <div class="mt-8 flex justify-center gap-3">
-    <a href="{{ url_for('chat.room') }}" class="rounded-lg bg-brand-600 px-5 py-2.5 text-white hover:bg-brand-700">
-      상담 이어가기
+  {# 로그인 상태 — 설문하고 시작하기 / 그냥 시작하기 #}
+  <div class="mt-8 flex flex-col items-center gap-3">
+    <a href="{{ url_for('survey.initial') }}"
+      class="rounded-lg bg-brand-600 px-6 py-3 text-white font-medium
+              hover:bg-brand-700 transition">
+      설문하고 시작하기
+    </a>
+    <a href="{{ url_for('chat.room') }}"
+      class="text-sm text-slate-500 hover:text-slate-700 hover:underline">
+      그냥 시작하기 →
     </a>
   </div>
 

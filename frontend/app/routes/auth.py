@@ -73,8 +73,8 @@ def signup():
                 flash("가입을 환영해요! 곧 사용자 연결 단계로 안내해드릴게요.", "info")
                 return redirect(url_for("main.landing"))
             else:
-                flash("가입을 환영해요! 먼저 간단한 설문을 진행할게요.", "info")
-                return redirect(url_for("survey.initial"))
+                flash("가입을 환영해요! 설문을 통해 맞춤 상담을 시작할 수 있어요.", "info")
+                return redirect(url_for("main.landing"))
 
     return render_template("auth/signup.html", form=form)
 
