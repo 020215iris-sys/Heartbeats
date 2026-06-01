@@ -114,7 +114,9 @@ services:
 
 #  FastAPI 백엔드는 컨테이너
   api:
-    build: ./backend
+  build:
+    context: .
+    dockerfile: ./backend/Dockerfile
     container_name: heartbeat_api
     restart: unless-stopped          
     env_file:                        
