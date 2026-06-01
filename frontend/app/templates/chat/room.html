@@ -108,7 +108,9 @@
       oninput: 입력 줄 수에 따라 자동으로 높이 조정. max-h-32(128px)에서 멈춤 #}
       <div class="flex-1">
         {{ form.message(
+        id="message-input",
         rows=1,
+        autofocus=true,
         class="block w-full resize-none rounded-2xl border border-slate-300
         px-4 py-2.5 text-sm
         focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
@@ -117,6 +119,7 @@
         oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,128)+'px'",
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.closest('form').requestSubmit();}"
         ) }}
+
       </div>
 
       {# 음성 입력 — MVP는 비활성. 백엔드 STT 붙으면 disabled 빼고 핸들러 연결 #}
@@ -143,9 +146,9 @@
       </button>
     </form>
 
-    {# 입력 검증 에러 (너무 길거나 빈 메시지) #}
+    {# 입력 검증 에러 — 입력 시작하면 숨김 #}
     {% for err in form.message.errors %}
-    <p class="mt-1 text-xs text-red-600">{{ err }}</p>
+    <p id="err-message" class="mt-1 text-xs text-red-600">{{ err }}</p>
     {% endfor %}
   </div>
 
@@ -159,13 +162,6 @@
   </div>
 
 </div>
-
-{# 페이지 로드 시 화면 하단으로 자동 스크롤 → 가장 최근 메시지가 보이게 #}
-<script>
-  window.addEventListener('load', function () {
-    window.scrollTo(0, document.body.scrollHeight);
-  });
-</script>
 
 {# ============ 회원가입 유도 팝업 ============
 게스트 메시지 한도 초과 시 show_signup_modal=True로 렌더링됨.
@@ -212,4 +208,36 @@
 </script>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function focusMessageInput() {
+    const textarea = document.getElementById('message-input');
+    const modal = document.getElementById('signup-modal');
+
+    if (!textarea || modal) return;
+
+    textarea.focus({ preventScroll: true });
+
+    const len = textarea.value.length;
+    textarea.setSelectionRange(len, len);
+  }
+
+  window.addEventListener('load', function () {
+    window.scrollTo(0, document.body.scrollHeight);
+    requestAnimationFrame(focusMessageInput);
+
+    // 입력 시작하면 서버 에러 숨김
+    const textarea = document.getElementById('message-input');
+    const err = document.getElementById('err-message');
+    if (textarea && err) {
+      textarea.addEventListener('input', () => err.style.display = 'none');
+    }
+  });
+
+  window.addEventListener('pageshow', function () {
+    requestAnimationFrame(focusMessageInput);
+  });
+</script>
 {% endblock %}
