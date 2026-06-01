@@ -1,17 +1,17 @@
 {# ==========================================================================
-   채팅 화면.
+채팅 화면.
 
-   구성:
-     1. 캐릭터 헤더  - 페르소나 아바타·이름·상태
-     2. 메시지 리스트 - AI 좌측(아바타+말풍선) / 사용자 우측(말풍선)
-     3. 입력 영역    - sticky bottom, 텍스트+음성(비활성)+전송
-     4. 안전 안내    - 1393 푸터
+구성:
+1. 캐릭터 헤더 - 페르소나 아바타·이름·상태
+2. 메시지 리스트 - AI 좌측(아바타+말풍선) / 사용자 우측(말풍선)
+3. 입력 영역 - sticky bottom, 텍스트+음성(비활성)+전송
+4. 안전 안내 - 1393 푸터
 
-   레이아웃 전략:
-     - 페이지 전체가 스크롤
-     - 입력창은 sticky bottom-0 으로 화면 하단 고정
-     - 모바일 가상 키보드와 충돌 없게 fixed 대신 sticky 사용
-   ========================================================================== #}
+레이아웃 전략:
+- 페이지 전체가 스크롤
+- 입력창은 sticky bottom-0 으로 화면 하단 고정
+- 모바일 가상 키보드와 충돌 없게 fixed 대신 sticky 사용
+========================================================================== #}
 
 {% extends "base.html" %}
 
@@ -51,9 +51,8 @@
       {# 대화 초기화 — POST + CSRF 필요해서 작은 form으로 감쌈 #}
       <form method="POST" action="{{ url_for('chat.clear') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit"
-                onclick="return confirm('지금까지의 대화가 모두 사라져요. 계속할까요?')"
-                class="text-xs text-slate-400 hover:text-slate-700 px-2 py-1">
+        <button type="submit" onclick="return confirm('지금까지의 대화가 모두 사라져요. 계속할까요?')"
+          class="text-xs text-slate-400 hover:text-slate-700 px-2 py-1">
           초기화
         </button>
       </form>
@@ -61,37 +60,31 @@
   </div>
 
   {# ============ 2. 메시지 리스트 ============ #}
-  <div id="messages" class="px-4 py-4 sm:py-6 space-y-3 min-h-[50vh]">
+  <div id="messages" class="px-4 py-3 sm:py-4 space-y-2 min-h-[50vh]">
 
     {% for msg in messages %}
-      {% if msg.role == 'assistant' %}
+    {% if msg.role == 'assistant' %}
 
-        {# AI 메시지 — 좌측, 아바타 동반.
-           rounded-bl-md 로 좌하단만 살짝 각져서 말풍선 꼬리 효과 #}
-        <div class="flex items-end gap-2">
-          <div class="flex-none w-8 h-8 rounded-full bg-{{ persona.accent_color }}-100
-                      flex items-center justify-center text-base">
-            {{ persona.avatar_emoji }}
-          </div>
-          <div class="max-w-[75%] bg-white border border-slate-200
-                      rounded-2xl rounded-bl-md px-4 py-2.5 text-sm text-slate-800
-                      whitespace-pre-wrap break-words">
-            {{ msg.content }}
-          </div>
-        </div>
+    {# AI 메시지 #}
+    <div class="flex items-end gap-2 mb-3">
+      <div class="flex-none w-8 h-8 rounded-full bg-{{ persona.accent_color }}-100
+                    flex items-center justify-center text-base">
+        {{ persona.avatar_emoji }}
+      </div>
 
-      {% else %}
+      <div class="w-fit max-w-[82%] bg-slate-50 border border-slate-200
+                rounded-2xl rounded-bl-md px-4 py-3 text-[15px] leading-6 text-slate-800
+                shadow-sm whitespace-pre-wrap break-words text-left">{{- msg.content -}}</div>
+    </div>
 
-        {# 사용자 메시지 — 우측, 아바타 없음, 브랜드 색 배경 #}
-        <div class="flex justify-end">
-          <div class="max-w-[75%] bg-brand-600 text-white
-                      rounded-2xl rounded-br-md px-4 py-2.5 text-sm
-                      whitespace-pre-wrap break-words">
-            {{ msg.content }}
-          </div>
-        </div>
+    {% else %}
 
-      {% endif %}
+    {# 사용자 메시지 #}
+    <div class="ml-auto w-fit max-w-[82%] bg-[#A47764] text-white
+              rounded-2xl rounded-br-md px-4 py-3 text-[15px] leading-6
+              shadow-sm whitespace-pre-wrap break-words text-left mb-3">{{- msg.content -}}</div>
+
+    {% endif %}
     {% endfor %}
 
   </div>
@@ -101,71 +94,64 @@
 
     {# 게스트 한도 표시. 회원이면 안 보임 #}
     {% if current_user.is_guest %}
-      <div class="mb-2 text-xs text-center text-slate-500">
-        체험 모드 — 남은 메시지
-        <strong class="text-brand-600">{{ current_user.guest_remaining }}</strong>
-        / {{ current_user.guest_limit }}개
-      </div>
+    <div class="mb-2 text-xs text-center text-slate-500">
+      체험 모드 — 남은 메시지
+      <strong class="text-brand-600">{{ current_user.guest_remaining }}</strong>
+      / {{ current_user.guest_limit }}개
+    </div>
     {% endif %}
 
     <form method="POST" novalidate class="flex items-end gap-2">
       {{ form.hidden_tag() }}
 
       {# 메시지 입력 textarea.
-         oninput: 입력 줄 수에 따라 자동으로 높이 조정. max-h-32(128px)에서 멈춤 #}
+      oninput: 입력 줄 수에 따라 자동으로 높이 조정. max-h-32(128px)에서 멈춤 #}
       <div class="flex-1">
         {{ form.message(
-            rows=1,
-            class="block w-full resize-none rounded-2xl border border-slate-300
-                   px-4 py-2.5 text-sm
-                   focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
-                   max-h-32",
-            placeholder="메시지를 입력하세요",
-            oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,128)+'px'"
+        rows=1,
+        class="block w-full resize-none rounded-2xl border border-slate-300
+        px-4 py-2.5 text-sm
+        focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500
+        max-h-32",
+        placeholder="메시지를 입력하세요 (Enter로 전송, Shift+Enter로 줄바꿈)",
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,128)+'px'",
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();this.closest('form').requestSubmit();}"
         ) }}
       </div>
 
       {# 음성 입력 — MVP는 비활성. 백엔드 STT 붙으면 disabled 빼고 핸들러 연결 #}
-      <button type="button"
-              disabled
-              title="음성 모드는 곧 추가될 예정이에요"
-              class="flex-none w-10 h-10 rounded-full bg-slate-100 text-slate-400
-                     cursor-not-allowed flex items-center justify-center"
-              aria-label="음성 입력 (준비 중)">
+      <button type="button" disabled title="음성 모드는 곧 추가될 예정이에요" class="flex-none w-10 h-10 rounded-full bg-slate-100 text-slate-400
+                     cursor-not-allowed flex items-center justify-center" aria-label="음성 입력 (준비 중)">
         {# 마이크 아이콘 (인라인 SVG, 외부 라이브러리 불필요) #}
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-          <line x1="12" y1="19" x2="12" y2="22"/>
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" y1="19" x2="12" y2="22" />
         </svg>
       </button>
 
       {# 전송 버튼 — 화살표 아이콘 #}
-      <button type="submit"
-              class="flex-none w-10 h-10 rounded-full bg-brand-600 text-white
+      <button type="submit" class="flex-none w-10 h-10 rounded-full bg-brand-600 text-white
                      hover:bg-brand-700 active:scale-95 transition
-                     flex items-center justify-center"
-              aria-label="전송">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24"
-             fill="none" stroke="currentColor" stroke-width="2.5"
-             stroke-linecap="round" stroke-linejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12"/>
-          <polyline points="12 5 19 12 12 19"/>
+                     flex items-center justify-center" aria-label="전송">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12" />
+          <polyline points="12 5 19 12 12 19" />
         </svg>
       </button>
     </form>
 
     {# 입력 검증 에러 (너무 길거나 빈 메시지) #}
     {% for err in form.message.errors %}
-      <p class="mt-1 text-xs text-red-600">{{ err }}</p>
+    <p class="mt-1 text-xs text-red-600">{{ err }}</p>
     {% endfor %}
   </div>
 
   {# ============ 4. 안전 안내 푸터 ============
-     정신건강 서비스에선 1393 안내가 항상 한 클릭 이내에 있어야 함.
-     채팅 페이지엔 항상 보이도록 하단에 배치 #}
+  정신건강 서비스에선 1393 안내가 항상 한 클릭 이내에 있어야 함.
+  채팅 페이지엔 항상 보이도록 하단에 배치 #}
   <div class="px-4 py-4 text-center text-xs text-slate-500">
     위급한 상황이라면 자살예방상담전화
     <a href="tel:1393" class="font-semibold text-slate-700 hover:underline">1393</a>
@@ -176,7 +162,7 @@
 
 {# 페이지 로드 시 화면 하단으로 자동 스크롤 → 가장 최근 메시지가 보이게 #}
 <script>
-  window.addEventListener('load', function() {
+  window.addEventListener('load', function () {
     window.scrollTo(0, document.body.scrollHeight);
   });
 </script>
