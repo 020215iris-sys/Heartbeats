@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional
@@ -6,7 +6,7 @@ from database import get_db_sensitive, get_db_audit
 from models import CounselingSession, Conversation, CrisisEvent, AuditLogSensitive, Summary
 from sqlalchemy.future import select
 from datetime import datetime, timezone
-from routers.auth import verify_access_token
+from core.security import get_current_user
 from openai import OpenAI
 import uuid
 import json
@@ -21,12 +21,6 @@ groq_client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1",
 )
-
-
-def get_current_user(authorization: str = Header(...)) -> dict:
-    token = authorization.replace("Bearer ", "")
-    return verify_access_token(token)
-
 
 # ==========================================
 # 세션 종료 + 요약 저장 공통 함수

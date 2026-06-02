@@ -60,7 +60,7 @@ async def require_profile_complete(
     둘 중 하나라도 NULL이면 400 반환.
     DB에는 nullable로 두고 앱 레벨에서 강제하는 패턴.
     """
-    from routers.auth import verify_access_token
+    from core.security import verify_access_token
     from models import User
     from sqlalchemy.future import select
 

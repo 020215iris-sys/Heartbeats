@@ -6,9 +6,9 @@ from database import get_db_general, get_db_audit, get_db_sensitive
 from models import User, AuditLogGeneral, Session, CounselingSession
 from sqlalchemy.future import select
 from datetime import datetime, timezone, timedelta, date
+from core.security import verify_access_token, SECRET_KEY, ALGORITHM
 from jose import jwt
 from typing import Optional
-import os
 import secrets
 import uuid
 
@@ -18,8 +18,6 @@ ALLOWED_SIGNUP_ROLES = {"user", "guardian"}
 # ==========================================
 # JWT 설정
 # ==========================================
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_HOURS = 24
 
@@ -30,13 +28,6 @@ def create_access_token(user_id: str, role: str) -> str:
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-def verify_access_token(token: str) -> dict:
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except Exception:
-        raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 토큰입니다.")
 
 def create_refresh_token() -> str:
     return secrets.token_urlsafe(64)
