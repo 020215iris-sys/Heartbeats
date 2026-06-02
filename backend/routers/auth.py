@@ -2,14 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 import bcrypt
-from database import get_db_general, get_db_audit
-from models import User, AuditLogGeneral, Session
+from database import get_db_general, get_db_audit, get_db_sensitive
+from models import User, AuditLogGeneral, Session, CounselingSession
 from sqlalchemy.future import select
 from datetime import datetime, timezone, timedelta, date
 from jose import jwt
 from typing import Optional
 import os
 import secrets
+import uuid
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 ALLOWED_SIGNUP_ROLES = {"user", "guardian"}
@@ -231,7 +232,10 @@ class LogoutRequest(BaseModel):
 @router.post("/logout")
 async def logout(
     body: LogoutRequest,
-    db_general: AsyncSession = Depends(get_db_general)
+    authorization: str = Header(...),
+    db_general: AsyncSession = Depends(get_db_general),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    db_audit: AsyncSession = Depends(get_db_audit)
 ):
     result = await db_general.execute(
         select(Session).where(
@@ -246,5 +250,23 @@ async def logout(
 
     session.revoked_at = datetime.now(timezone.utc)
     await db_general.commit()
+
+    # 상담 세션 요약 저장
+    try:
+        token = authorization.replace("Bearer ", "")
+        current_user = verify_access_token(token)
+        active = await db_sensitive.execute(
+            select(CounselingSession).where(
+                CounselingSession.user_id == uuid.UUID(current_user["user_id"]),
+                CounselingSession.is_active == True
+            )
+        )
+        counseling_session = active.scalar()
+        if counseling_session:
+            from routers.counseling import close_session_with_summary
+            await close_session_with_summary(counseling_session, db_sensitive, db_audit)
+            await db_sensitive.commit()
+    except Exception:
+        pass
 
     return {"message": "로그아웃 되었습니다."}

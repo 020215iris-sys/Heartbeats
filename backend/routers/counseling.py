@@ -17,20 +17,90 @@ from summary_service import request_summary
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
 
-# Groq 클라이언트 (요약용 임시)
 groq_client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1",
 )
 
 
-# ==========================================
-# 현재 유저 가져오는 공통 함수
-# ==========================================
 def get_current_user(authorization: str = Header(...)) -> dict:
-    """헤더에서 JWT 토큰 꺼내서 검증"""
     token = authorization.replace("Bearer ", "")
     return verify_access_token(token)
+
+
+# ==========================================
+# 세션 종료 + 요약 저장 공통 함수
+# ==========================================
+async def close_session_with_summary(session, db_sensitive, db_audit):
+    """세션 종료 + LoRA 요약 생성 + summaries 저장 (공통 로직)"""
+    session.ended_at = datetime.now(timezone.utc)
+    session.is_active = False
+
+    messages_result = await db_sensitive.execute(
+        select(Conversation).where(
+            Conversation.session_id == session.id,
+            Conversation.deleted_at == None
+        ).order_by(Conversation.created_at.asc())
+    )
+    messages = messages_result.scalars().all()
+
+    transcript = "\n".join([
+        f"{'내담자' if m.role == 'user' else '상담사'}: {m.encrypted_content}"
+        for m in messages
+    ])
+
+    try:
+        summary_result = request_summary(transcript)
+        raw_output = summary_result["output"]
+        try:
+            summary_data = yaml.safe_load(raw_output)
+            if not isinstance(summary_data, dict):
+                raise ValueError("yaml 파싱 실패")
+        except:
+            summary_data = {}
+            current_key = None
+            items = []
+            for line in raw_output.splitlines():
+                line = line.strip()
+                if line.endswith(":") and not line.startswith("-"):
+                    if current_key and items:
+                        summary_data[current_key] = items
+                    current_key = line[:-1]
+                    items = []
+                elif line.startswith("-"):
+                    items.append(line[1:].strip())
+                elif line and current_key:
+                    summary_data[current_key] = line
+                    current_key = None
+            if current_key and items:
+                summary_data[current_key] = items
+        if not isinstance(summary_data, dict):
+            summary_data = {}
+        summary_data.setdefault("risk_level", "low")
+        summary_data.setdefault("suicidal_mentioned", False)
+    except Exception:
+        summary_data = {
+            "main_complaint": "",
+            "risk_level": "low",
+            "suicidal_mentioned": False,
+            "core_topics": [],
+            "next_session_notes": "",
+            "prompt_adjustment": {}
+        }
+
+    new_summary = Summary(
+        session_id=session.id,
+        user_id=session.user_id,
+        main_complaint=summary_data.get("main_complaint", ""),
+        risk_level=summary_data.get("risk_level", "low"),
+        suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
+        core_topics=json.loads(summary_data.get("core_topics", "[]")) if isinstance(summary_data.get("core_topics"), str) else summary_data.get("core_topics", []),
+        next_session_notes=summary_data.get("next_session_notes", ""),
+        prompt_adjustment=json.loads(summary_data.get("prompt_adjustment", "{}")) if isinstance(summary_data.get("prompt_adjustment"), str) else summary_data.get("prompt_adjustment", {})
+    )
+    db_sensitive.add(new_summary)
+    await db_sensitive.flush()
+    return new_summary
 
 
 # ==========================================
@@ -38,7 +108,7 @@ def get_current_user(authorization: str = Header(...)) -> dict:
 # ==========================================
 class StartSessionRequest(BaseModel):
     classification_id: Optional[str] = None
-    persona_type: Optional[str] = "empathy"  # empathy / coaching / neutral
+    persona_type: Optional[str] = "empathy"
 
 
 @router.post("/sessions")
@@ -48,8 +118,20 @@ async def start_session(
     db_sensitive: AsyncSession = Depends(get_db_sensitive),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
-    """상담 세션 시작 → counseling_sessions 테이블에 행 생성"""
+    """상담 세션 시작 → 기존 active 세션 자동 종료 후 새 세션 생성"""
     try:
+        # 기존 active 세션 있으면 자동 종료 + 요약 저장
+        existing = await db_sensitive.execute(
+            select(CounselingSession).where(
+                CounselingSession.user_id == uuid.UUID(current_user["user_id"]),
+                CounselingSession.is_active == True,
+                CounselingSession.deleted_at == None
+            )
+        )
+        old_session = existing.scalar()
+        if old_session:
+            await close_session_with_summary(old_session, db_sensitive, db_audit)
+
         new_session = CounselingSession(
             user_id=uuid.UUID(current_user["user_id"]),
             classification_id=uuid.UUID(body.classification_id) if body.classification_id else None,
@@ -94,7 +176,6 @@ async def get_session(
     db_sensitive: AsyncSession = Depends(get_db_sensitive),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
-    """session_id로 상담 세션 정보 조회"""
     result = await db_sensitive.execute(
         select(CounselingSession).where(
             CounselingSession.id == uuid.UUID(session_id),
@@ -131,13 +212,13 @@ async def get_session(
 # ==========================================
 # 대화 메시지 저장
 # ==========================================
-CRISIS_THRESHOLD = 0.7  # 위기 임계치
+CRISIS_THRESHOLD = 0.7
 
 class SaveMessageRequest(BaseModel):
-    role: str                                  # "user" or "assistant"
-    message_type: Optional[str] = "text"       # text / system / crisis / summary
-    encrypted_content: str                     # 1차: 평문 저장 / 추후 AES-256 암호화
-    crisis_score: Optional[float] = None       # AI가 분석한 위기 점수 (0.0~1.0)
+    role: str
+    message_type: Optional[str] = "text"
+    encrypted_content: str
+    crisis_score: Optional[float] = None
 
 
 @router.post("/sessions/{session_id}/messages")
@@ -148,7 +229,6 @@ async def save_message(
     db_sensitive: AsyncSession = Depends(get_db_sensitive),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
-    """대화 메시지 저장 → conversations 테이블에 행 생성"""
     try:
         result = await db_sensitive.execute(
             select(CounselingSession).where(
@@ -223,7 +303,6 @@ async def get_messages(
     db_sensitive: AsyncSession = Depends(get_db_sensitive),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
-    """세션의 전체 대화 내역 조회"""
     session_result = await db_sensitive.execute(
         select(CounselingSession).where(
             CounselingSession.id == uuid.UUID(session_id),
@@ -293,78 +372,7 @@ async def end_session(
         if str(session.user_id) != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
-        session.ended_at = datetime.now(timezone.utc)
-        session.is_active = False
-
-        messages_result = await db_sensitive.execute(
-            select(Conversation).where(
-                Conversation.session_id == uuid.UUID(session_id),
-                Conversation.deleted_at == None
-            ).order_by(Conversation.created_at.asc())
-        )
-        messages = messages_result.scalars().all()
-
-        transcript = "\n".join([
-            f"{'내담자' if m.role == 'user' else '상담사'}: {m.encrypted_content}"
-            for m in messages
-        ])
-
-        # 5. LoRA summary 요청 → 실패 시 기본값으로 fallback
-        try:
-            summary_result = request_summary(transcript)
-            raw_output = summary_result["output"]
-
-            # yaml 파싱 시도 → 실패하면 텍스트 직접 파싱  ← 수정
-            try:
-                summary_data = yaml.safe_load(raw_output)
-                if not isinstance(summary_data, dict):
-                    raise ValueError("yaml 파싱 실패")
-            except:
-                summary_data = {}
-                current_key = None
-                items = []
-                for line in raw_output.splitlines():
-                    line = line.strip()
-                    if line.endswith(":") and not line.startswith("-"):
-                        if current_key and items:
-                            summary_data[current_key] = items
-                        current_key = line[:-1]
-                        items = []
-                    elif line.startswith("-"):
-                        items.append(line[1:].strip())
-                    elif line and current_key:
-                        summary_data[current_key] = line
-                        current_key = None
-                if current_key and items:
-                    summary_data[current_key] = items
-
-            if not isinstance(summary_data, dict):
-                summary_data = {}
-            summary_data.setdefault("risk_level", "low")
-            summary_data.setdefault("suicidal_mentioned", False)
-
-        except Exception:
-            summary_data = {
-                "main_complaint": "",
-                "risk_level": "low",
-                "suicidal_mentioned": False,
-                "core_topics": [],        # ← 빈 리스트
-                "next_session_notes": "",
-                "prompt_adjustment": {}   # ← 빈 딕셔너리
-            }
-
-        # 6. summaries 테이블에 저장
-        new_summary = Summary(
-            session_id=uuid.UUID(session_id),
-            user_id=uuid.UUID(current_user["user_id"]),
-            main_complaint=summary_data.get("main_complaint", ""),
-            risk_level=summary_data.get("risk_level", "low"),
-            suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
-            core_topics=json.loads(summary_data.get("core_topics", "[]")) if isinstance(summary_data.get("core_topics"), str) else summary_data.get("core_topics", []),
-            next_session_notes=summary_data.get("next_session_notes", ""),
-            prompt_adjustment=json.loads(summary_data.get("prompt_adjustment", "{}")) if isinstance(summary_data.get("prompt_adjustment"), str) else summary_data.get("prompt_adjustment", {})
-        )
-        db_sensitive.add(new_summary)
+        new_summary = await close_session_with_summary(session, db_sensitive, db_audit)
 
         audit_log = AuditLogSensitive(
             user_id=uuid.UUID(current_user["user_id"]),
