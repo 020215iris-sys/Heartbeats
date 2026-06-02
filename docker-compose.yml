@@ -112,19 +112,23 @@ services:
     networks:
       - heartbeat_net
 
-#  FastAPI 백엔드는 컨테이너
+  # FastAPI 백엔드는 컨테이너
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
     container_name: heartbeat_api
-    restart: unless-stopped          
-    env_file:                        
-      - ./backend/.env             
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
     ports:
       - "8000:8000"
+    volumes:                    # ← 이 두 줄 추가
+      - ./backend:/app          # ← (들여쓰기 주의 — api와 같은 레벨의 자식)      
     depends_on:
       db_general:
         condition: service_healthy
-      db_sensitive:                  #
+      db_sensitive:
         condition: service_healthy
       db_audit:
         condition: service_healthy
@@ -132,4 +136,4 @@ services:
         condition: service_healthy
     networks:
       - heartbeat_net
-    command: uvicorn backend_main:app --host 0.0.0.0 --port 8000  
+    command: uvicorn backend_main:app --host 0.0.0.0 --port 8000
