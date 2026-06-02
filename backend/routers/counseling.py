@@ -94,10 +94,10 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         main_complaint=summary_data.get("main_complaint", ""),
         risk_level=summary_data.get("risk_level", "low"),
         suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
-        core_topics=json.loads(summary_data.get("core_topics", "[]")) if isinstance(summary_data.get("core_topics"), str) else summary_data.get("core_topics", []),
+        core_topics=summary_data.get("core_topics", []),
+        prompt_adjustment=summary_data.get("prompt_adjustment", {}),    
         next_session_notes=summary_data.get("next_session_notes", ""),
-        prompt_adjustment=json.loads(summary_data.get("prompt_adjustment", "{}")) if isinstance(summary_data.get("prompt_adjustment"), str) else summary_data.get("prompt_adjustment", {})
-    )
+        )
     db_sensitive.add(new_summary)
     await db_sensitive.flush()
     return new_summary
