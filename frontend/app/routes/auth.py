@@ -23,6 +23,7 @@ def login():
 
             # 세션에 사용자 정보 저장
             session["access_token"] = result["access_token"]
+            session["refresh_token"] = result.get("refresh_token")
             session["user_id"] = result["id"]
             session["email"] = form.email.data
             session["nickname"] = result["nickname"]
@@ -64,6 +65,7 @@ def signup():
             guest_svc.end_guest_session()
 
             session["access_token"] = result["access_token"]
+            session["refresh_token"] = result.get("refresh_token")
             session["user_id"] = result["id"]
             session["email"] = result["email"]
             session["nickname"] = result["nickname"]

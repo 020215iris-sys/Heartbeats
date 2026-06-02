@@ -16,7 +16,8 @@
    실제 운영에선 CONVERSATIONS 테이블(민감 DB)에 암호화 저장됨.
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, session
+from flask import Blueprint, render_template, redirect, url_for, flash, session, request, jsonify
+from datetime import datetime
 from ..forms.chat import ChatMessageForm
 from ..services import guest as guest_svc
 from ..services.personas import get_persona
@@ -35,14 +36,18 @@ def _get_messages() -> list[dict]:
     return session.get("chat_messages", [])
 
 
-def _append_message(role: str, content: str) -> None:
+def _append_message(role: str, content: str, timestamp: str = None) -> None:
     """
     세션에 메시지 추가.
     role: "user" | "assistant"  (system은 아직 안 씀)
     """
     messages = _get_messages()
-    messages.append({"role": role, "content": content})
-    # 슬라이싱으로 최근 N개만 유지 (오래된 거 자동 폐기)
+    messages.append({
+        "role": role,
+        "content": content,
+        # timestamp 없으면 현재 시각 자동 생성
+        "timestamp": timestamp or datetime.now().strftime("%H:%M")
+    })
     session["chat_messages"] = messages[-MAX_SESSION_MESSAGES:]
 
 
@@ -103,7 +108,8 @@ def room():
         history_before = _get_messages()
 
         # 사용자 메시지 저장
-        _append_message("user", user_message)
+        now = datetime.now().strftime("%H:%M")
+        _append_message("user", user_message, now)
 
         # 게스트면 카운트 증가 — 헤더의 X/5 표시가 다음 요청부터 자동 갱신됨
         if is_guest:
@@ -115,9 +121,12 @@ def room():
             history=history_before,
             user_id=session.get("user_id"),
         )
-        _append_message("assistant", ai_reply)
 
-        # PRG 패턴: POST 후 GET으로 redirect → 새로고침해도 중복 전송 안 됨
+        _append_message("assistant", ai_reply, now)
+
+        # fetch 요청이면 JSON 반환, 일반 폼이면 redirect (하위 호환)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"reply": ai_reply, "timestamp": now})
         return redirect(url_for("chat.room"))
 
     # ===== 4. GET: 채팅 화면 렌더링 =====

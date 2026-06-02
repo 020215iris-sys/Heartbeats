@@ -37,6 +37,7 @@ def login(email: str, password: str, role: str) -> dict | None:
     data = res.json()
     return {
         "access_token": data["access_token"],
+        "refresh_token": data.get("refresh_token"),
         "id": data["id"],
         "email": data["email"],
         "nickname": data["nickname"],
@@ -81,6 +82,7 @@ def signup(
     data = res.json()
     return {
         "access_token": data["access_token"],
+        "refresh_token": data.get("refresh_token"),
         "id": data["id"],
         "email": data["email"],
         "nickname": data["nickname"],
@@ -112,7 +114,7 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
             json={
                 "message": user_message,
                 "session_id": chat_session_id,  # 백엔드 필수값
-                "history": history,
+                "history": [{"role": h["role"], "content": h["content"]} for h in history],
             },
             headers={
                 "Authorization": f"Bearer {access_token}"  # JWT 인증
@@ -121,8 +123,37 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
         )
         if res.ok:
             return res.json().get("reply", "응답을 받지 못했어요.")
-        # 401이면 토큰 만료
+        # 401이면 refresh 시도
         if res.status_code == 401:
+            refresh_token = flask_session.get("refresh_token")
+            if refresh_token:
+                try:
+                    r = requests.post(
+                        f"{_base_url()}/auth/refresh",
+                        json={"refresh_token": refresh_token},
+                        timeout=5,
+                    )
+                    if r.ok:
+                        # 새 access_token 저장 후 원래 요청 재시도
+                        flask_session["access_token"] = r.json()["access_token"]
+                        flask_session["chat_session_id"] = str(uuid.uuid4())
+                        chat_session_id = flask_session["chat_session_id"]
+                        retry = requests.post(
+                            f"{_base_url()}/chat",
+                            json={
+                                "message": user_message,
+                                "session_id": chat_session_id,
+                                "history": history,
+                            },
+                            headers={"Authorization": f"Bearer {flask_session['access_token']}"},
+                            timeout=15,
+                        )
+                        if retry.ok:
+                            return retry.json().get("reply", "응답을 받지 못했어요.")
+                except requests.RequestException:
+                    pass
+            # refresh도 실패 → 로그아웃 처리
+            flask_session.clear()
             return "로그인이 만료됐어요. 다시 로그인해주세요."
     except requests.RequestException:
         pass
