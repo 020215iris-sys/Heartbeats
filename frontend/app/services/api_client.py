@@ -112,6 +112,7 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
             json={
                 "message": user_message,
                 "session_id": chat_session_id,  # 백엔드 필수값
+                "history": history,
             },
             headers={
                 "Authorization": f"Bearer {access_token}"  # JWT 인증
