@@ -13,7 +13,7 @@ from sqlalchemy.future import select
 from database import engine_general, engine_sensitive, engine_audit, get_db_sensitive, get_db_audit
 from models import BaseGeneral, BaseSensitive, BaseAudit, Conversation, AuditLogSensitive, CounselingSession, Summary  # ← 14번줄: Summary 추가
 from routers import auth, counseling
-from routers.auth import verify_access_token
+from core.security import verify_access_token
 from core.crypto import encrypt_content
 from datetime import datetime, timezone, timedelta
 
