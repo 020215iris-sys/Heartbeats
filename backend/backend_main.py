@@ -163,6 +163,8 @@ async def chat(
             messages=messages_foreign
         )
         reply = response.choices[0].message.content
+        if contains_foreign(reply):
+            reply = "오늘은 유난히 지친 하루였나 보네요."
 
     # 4. 사용자 메시지 저장
     ciphertext, key_id = encrypt_content(body.message)
