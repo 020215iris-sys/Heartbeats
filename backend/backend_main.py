@@ -142,7 +142,7 @@ async def chat(
     )
 
     response = client.chat.completions.create(
-        model="llama-3.1-70b-versatile",
+        model="llama-3.3-70b-versatile",
         messages=messages_to_send  # messages_to_send 사용
     )
     reply = response.choices[0].message.content
@@ -159,8 +159,8 @@ async def chat(
              {"role": "user", "content": body.message}]
         )
         response = client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=messages_foreign 
+            model="llama-3.3-70b-versatile",
+            messages=messages_foreign
         )
         reply = response.choices[0].message.content
 

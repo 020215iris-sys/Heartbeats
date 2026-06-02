@@ -83,6 +83,12 @@ def signup():
 
 @bp.route("/logout")
 def logout():
+    # 백엔드에 요약 저장 + refresh_token 만료 요청
+    refresh_token = session.get("refresh_token")
+    access_token = session.get("access_token")
+    if refresh_token and access_token:
+        api_client.logout(refresh_token, access_token)
+
     session.clear()
     flash("로그아웃되었어요.", "info")
     return redirect(url_for("main.landing"))

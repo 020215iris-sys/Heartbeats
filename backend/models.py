@@ -140,9 +140,9 @@ class Summary(BaseSensitive):
     main_complaint     = Column(Text, nullable=True)
     risk_level         = Column(String, default="low")
     suicidal_mentioned = Column(Boolean, default=False)
-    core_topics        = Column(Text, nullable=True)
+    core_topics        = Column(JSONB, nullable=True)
     next_session_notes = Column(Text, nullable=True)
-    prompt_adjustment  = Column(String, nullable=True)
+    prompt_adjustment  = Column(JSONB, nullable=True)
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

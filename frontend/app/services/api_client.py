@@ -184,3 +184,18 @@ def get_latest_diagnosis(user_id: str) -> dict | None:
     """사용자의 가장 최근 진단 조회."""
     # TODO: 백엔드 GET /diagnoses 엔드포인트 붙으면 교체
     return diagnosis_storage.find_latest_by_user(user_id)
+
+def logout(refresh_token: str, access_token: str) -> None:
+    """
+    백엔드에 로그아웃 요청. 요약 저장 + refresh_token 만료 처리.
+    백엔드 실패해도 프론트 로그아웃은 진행되므로 예외 무시.
+    """
+    try:
+        requests.post(
+            f"{_base_url()}/auth/logout",
+            json={"refresh_token": refresh_token},
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+    except requests.RequestException:
+        pass
