@@ -12,6 +12,7 @@ import os
 import secrets
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+ALLOWED_SIGNUP_ROLES = {"user", "guardian"}
 
 # ==========================================
 # JWT 설정
@@ -59,6 +60,9 @@ async def signup(
     db_general: AsyncSession = Depends(get_db_general),
     db_audit: AsyncSession = Depends(get_db_audit)
 ):
+    if user_data.role not in ALLOWED_SIGNUP_ROLES:
+        raise HTTPException(status_code=400, detail="허용되지 않은 role입니다.")
+
     existing_email = await db_general.execute(select(User).where(User.email == user_data.email))
     if existing_email.scalar():
         raise HTTPException(status_code=409, detail="email_taken")
