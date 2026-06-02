@@ -123,6 +123,8 @@ services:
       - ./backend/.env
     ports:
       - "8000:8000"
+    volumes:                    # ← 이 두 줄 추가
+      - ./backend:/app          # ← (들여쓰기 주의 — api와 같은 레벨의 자식)      
     depends_on:
       db_general:
         condition: service_healthy
