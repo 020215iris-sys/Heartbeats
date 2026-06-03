@@ -25,9 +25,27 @@
 
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased overflow-x-hidden">
 
-  {# 왼쪽 사이드바 — appShell 뒤에 깔려 있다가 셸이 밀리면 드러남 #}
-  <aside id="drawer" class="fixed inset-y-0 left-0 z-10 w-64 bg-white">
-    <div class="flex h-14 items-center border-b border-slate-200 px-4 font-semibold">메뉴</div>
+  {# 모바일 오버레이 배경 #}
+  <div id="backdrop"
+    class="fixed inset-0 z-30 bg-slate-900/40 opacity-0 pointer-events-none transition-opacity duration-200 md:hidden">
+  </div>
+
+  {# 왼쪽 사이드바 — PC에서는 appShell 뒤, 모바일에서는 오버레이로 등장 #}
+  <aside id="drawer"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full bg-white shadow-xl transition-transform duration-200 ease-out md:z-10 md:translate-x-0 md:shadow-none">
+
+    {# 사이드바 헤더: 모바일은 기존 유지, PC는 펼쳐졌을 때 메뉴 왼쪽에 햄버거 버튼 노출 #}
+    <div class="flex h-14 items-center gap-2 border-b border-slate-200 px-4 font-semibold">
+      <button id="drawerMenuBtn" type="button" aria-label="메뉴 닫기" aria-controls="drawer" aria-expanded="false"
+        class="rounded-md p-2 text-slate-700 transition hover:bg-slate-100">
+        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+             stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <span>메뉴</span>
+    </div>
+
     <nav class="flex flex-col p-2 text-sm text-slate-700">
       <a href="{{ url_for('main.landing') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">홈</a>
       <a href="{{ url_for('chat.room') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">채팅</a>
@@ -42,108 +60,174 @@
     </nav>
   </aside>
 
-  {# 축소 대상 셸: 헤더 + flash + main 전체를 감쌈 #}
+  {# 헤더 + flash + main 전체 셸 #}
   <div id="appShell"
     class="relative z-20 min-h-screen bg-slate-50 transition-[margin] duration-200 ease-out">
 
-  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white">
-    <div class="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-      <div class="flex items-center gap-2">
-        <button id="menuBtn" type="button" aria-label="메뉴 열기"
-          class="-ml-2 rounded-md p-2 text-slate-700 hover:bg-slate-100">
-          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-               stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
-        <a href="{{ url_for('main.landing') }}" class="font-semibold">❤ 하트비트</a>
-      </div>
-      <nav class="flex items-center gap-3 text-sm text-slate-600">
-        {% if current_user.status == "authenticated" %}
+    <header class="sticky top-0 z-30 border-b border-slate-200 bg-white">
+      <div class="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+        <div class="flex items-center gap-2">
+          <button id="menuBtn" type="button" aria-label="메뉴 열기" aria-controls="drawer" aria-expanded="false"
+            class="-ml-2 rounded-md p-2 text-slate-700 transition hover:bg-slate-100">
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                 stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <a href="{{ url_for('main.landing') }}" class="font-semibold">❤ 하트비트</a>
+        </div>
 
-        {# ----- 로그인됨 (기존과 동일) ----- #}
-        <span class="text-slate-500">
-          {{ current_user.nickname or current_user.email }}
-          {% if current_user.role == "guardian" %}
-          <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">보호자</span>
+        <nav class="flex items-center gap-3 text-sm text-slate-600">
+          {% if current_user.status == "authenticated" %}
+
+          <span class="text-slate-500">
+            {{ current_user.nickname or current_user.email }}
+            {% if current_user.role == "guardian" %}
+            <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">보호자</span>
+            {% endif %}
+          </span>
+          {% if current_user.role == "user" %}
+          <a href="#" class="hover:text-slate-900">내 상담</a>
+          {% elif current_user.role == "guardian" %}
+          <a href="#" class="hover:text-slate-900">보호 사용자</a>
           {% endif %}
-        </span>
-        {% if current_user.role == "user" %}
-        <a href="#" class="hover:text-slate-900">내 상담</a>
-        {% elif current_user.role == "guardian" %}
-        <a href="#" class="hover:text-slate-900">보호 사용자</a>
-        {% endif %}
-        <a href="{{ url_for('auth.logout') }}" class="hover:text-slate-900">로그아웃</a>
+          <a href="{{ url_for('auth.logout') }}" class="hover:text-slate-900">로그아웃</a>
 
-        {% elif current_user.status == "guest" %}
+          {% elif current_user.status == "guest" %}
 
-        {# ----- 게스트(체험 중) ----- #}
-        {# 남은 메시지 수를 카운트 형태로 표시. 줄어들수록 회원가입 유도 효과 #}
-        <span class="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
-          체험 중
-          <strong class="text-brand-600">
-            {{ current_user.guest_remaining }}/{{ current_user.guest_limit }}
-          </strong>
-        </span>
-        <a href="{{ url_for('auth.login') }}"
-          class="rounded-lg bg-brand-600 px-3 py-1.5 text-white hover:bg-brand-700 transition">
-          로그인
-        </a>
+          <span class="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+            체험 중
+            <strong class="text-brand-600">
+              {{ current_user.guest_remaining }}/{{ current_user.guest_limit }}
+            </strong>
+          </span>
+          <a href="{{ url_for('auth.login') }}"
+            class="rounded-lg bg-brand-600 px-3 py-1.5 text-white transition hover:bg-brand-700">
+            로그인
+          </a>
 
-        {% else %}
+          {% else %}
 
-        {# ----- 비로그인 ----- #}
-        <a href="{{ url_for('auth.login') }}" class="hover:text-slate-900">로그인</a>
-        <a href="{{ url_for('auth.signup') }}"
-          class="rounded-lg bg-brand-600 px-3 py-1.5 text-white hover:bg-brand-700 transition">
-          회원가입
-        </a>
+          <a href="{{ url_for('auth.login') }}" class="hover:text-slate-900">로그인</a>
+          <a href="{{ url_for('auth.signup') }}"
+            class="rounded-lg bg-brand-600 px-3 py-1.5 text-white transition hover:bg-brand-700">
+            회원가입
+          </a>
 
-        {% endif %}
-      </nav>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mx-auto max-w-3xl space-y-2 px-4 pt-4">
+      {% for category, msg in messages %}
+      <div class="rounded-md border px-4 py-2 text-sm
+                  {% if category == 'error' %}bg-red-50 border-red-200 text-red-800
+                  {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+        {{ msg }}
+      </div>
+      {% endfor %}
     </div>
-  </header>
+    {% endif %}
+    {% endwith %}
 
-  {# flash 메시지 표시 영역 (다른 페이지에서 띄운 알림이 여기 뜸) #}
-  {% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-  <div class="mx-auto max-w-3xl px-4 pt-4 space-y-2">
-    {% for category, msg in messages %}
-    <div class="rounded-md border px-4 py-2 text-sm
-                        {% if category == 'error' %}bg-red-50 border-red-200 text-red-800
-                        {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
-      {{ msg }}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-  {% endwith %}
-
-  <main>{% block content %}{% endblock %}</main>
+    <main>{% block content %}{% endblock %}</main>
   </div>{# /appShell #}
 
   <script>
     (function () {
-      const btn = document.getElementById('menuBtn');
+      const openBtn = document.getElementById('menuBtn');
+      const drawerBtn = document.getElementById('drawerMenuBtn');
+      const drawer = document.getElementById('drawer');
       const shell = document.getElementById('appShell');
-      const KEY = 'drawerOpen';
+      const backdrop = document.getElementById('backdrop');
+      const body = document.body;
 
-      // 저장된 상태 복원 — 초기 로드 시 슬라이드 애니메이션은 잠시 끔
-      if (localStorage.getItem(KEY) === '1') {
-        shell.classList.add('transition-none', 'ml-64');
-        requestAnimationFrame(() => requestAnimationFrame(
-          () => shell.classList.remove('transition-none')));
+      const KEY = 'drawerOpen';
+      const mq = window.matchMedia('(min-width: 768px)');
+
+      let open = localStorage.getItem(KEY) === '1';
+
+      function syncButtons() {
+        openBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        drawerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        openBtn.setAttribute('aria-label', open ? '메뉴 닫기' : '메뉴 열기');
+        drawerBtn.setAttribute('aria-label', open ? '메뉴 닫기' : '메뉴 열기');
+
+        // PC에서 사이드바가 펼쳐진 상태면 상단 햄버거는 숨기고,
+        // 사이드바 내부 햄버거가 메뉴 왼쪽에 보이도록 처리
+        const useDrawerButtonOnDesktop = mq.matches && open;
+        openBtn.style.visibility = useDrawerButtonOnDesktop ? 'hidden' : 'visible';
+        openBtn.style.pointerEvents = useDrawerButtonOnDesktop ? 'none' : 'auto';
       }
 
-      // 버튼 토글 + 상태 저장
-      btn.addEventListener('click', () => {
-        const open = shell.classList.toggle('ml-64');
+      function applyState() {
+        if (mq.matches) {
+          // PC: 기존처럼 appShell을 밀어서 drawer를 드러냄
+          drawer.classList.remove('-translate-x-full');
+          shell.classList.toggle('ml-64', open);
+
+          // 모바일 상태 정리
+          backdrop.classList.add('opacity-0', 'pointer-events-none');
+          body.classList.remove('overflow-hidden');
+        } else {
+          // 모바일: 본문은 안 밀고 drawer만 오버레이
+          shell.classList.remove('ml-64');
+          drawer.classList.toggle('-translate-x-full', !open);
+          backdrop.classList.toggle('opacity-0', !open);
+          backdrop.classList.toggle('pointer-events-none', !open);
+          body.classList.toggle('overflow-hidden', open);
+        }
+
+        syncButtons();
+      }
+
+      function toggleMenu() {
+        open = !open;
         localStorage.setItem(KEY, open ? '1' : '0');
+        applyState();
+      }
+
+      openBtn.addEventListener('click', toggleMenu);
+      drawerBtn.addEventListener('click', toggleMenu);
+
+      backdrop.addEventListener('click', () => {
+        if (!mq.matches) {
+          open = false;
+          localStorage.setItem(KEY, '0');
+          applyState();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && open && !mq.matches) {
+          open = false;
+          localStorage.setItem(KEY, '0');
+          applyState();
+        }
+      });
+
+      mq.addEventListener('change', applyState);
+
+      // 초기 로드 시 애니메이션 튐 방지
+      drawer.classList.add('transition-none');
+      shell.classList.add('transition-none');
+
+      applyState();
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          drawer.classList.remove('transition-none');
+          shell.classList.remove('transition-none');
+        });
       });
     })();
   </script>
 
   {% block scripts %}{% endblock %}
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 
 </html>
