@@ -12,7 +12,7 @@ import uuid
 import json
 import os
 import yaml
-
+from core.crypto import decrypt_content
 from summary_service import request_summary
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
@@ -39,7 +39,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
     messages = messages_result.scalars().all()
 
     transcript = "\n".join([
-        f"{'내담자' if m.role == 'user' else '상담사'}: {m.encrypted_content}"
+        f"{'내담자' if m.role == 'user' else '상담사'}: {decrypt_content(m.encrypted_content, m.encryption_key_id)}"
         for m in messages
     ])
 
@@ -70,8 +70,46 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
                 summary_data[current_key] = items
         if not isinstance(summary_data, dict):
             summary_data = {}
-        summary_data.setdefault("risk_level", "low")
-        summary_data.setdefault("suicidal_mentioned", False)
+        # Groq으로 risk_level / suicidal_mentioned 판단
+        risk_prompt = f"""당신은 정신건강 상담 요약을 검토하는 분류기입니다.
+
+        주어진 상담 요약을 읽고 다음 두 항목만 판단하세요.
+
+        1. risk_level
+        * low
+        * medium
+        * high
+
+        2. suicidal_mentioned
+        * true
+        * false
+
+        판단 기준
+
+        low: 일반적인 스트레스, 고민, 갈등 수준. 자살 및 자해 관련 언급 없음
+        medium: 우울감, 불안감, 무기력감, 자기비난, 절망감 등이 반복적으로 나타남. 정서적 고통이 크지만 자살 또는 자해 의도는 확인되지 않음
+        high: 자살, 자해, 죽고 싶음, 사라지고 싶음, 삶에 지속 의지를 부정하는 표현, 극단적 선택 등 위험 표현이 존재함
+
+        규칙
+        * 자살 또는 자해 관련 표현이 있으면 suicidal_mentioned=true
+        * suicidal_mentioned=true 이면 risk_level=high
+        * 반드시 JSON만 출력
+        * 설명 금지
+        * reason 출력 금지
+
+        상담 요약:
+        main_complaint: {summary_data.get("main_complaint", "")}
+        core_topics: {summary_data.get("core_topics", [])}
+        next_session_notes: {summary_data.get("next_session_notes", "")}
+        prompt_adjustment: {summary_data.get("prompt_adjustment", {})}"""
+        risk_response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": risk_prompt}]
+        )
+        risk_text = risk_response.choices[0].message.content.strip()
+        risk_parsed = json.loads(risk_text)
+        summary_data["risk_level"] = risk_parsed.get("risk_level", "low")
+        summary_data["suicidal_mentioned"] = risk_parsed.get("suicidal_mentioned", False)
     except Exception:
         summary_data = {
             "main_complaint": "",

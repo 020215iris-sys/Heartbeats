@@ -1,0 +1,209 @@
+[33mcommit ad80ae6182f763b78d5bd17242f11ef777192105[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeat/backend-signup[m[33m, [m[1;31morigin/feat/backend-signup[m[33m, [m[1;32mmain[m[33m)[m
+Author: sjs33az <dhdnjsfjqm@example.com>
+Date:   Tue Jun 2 19:44:28 2026 +0900
+
+    feat: DB 요청 보안 부분 import 수정
+
+[1mdiff --git a/backend/database.py b/backend/database.py[m
+[1mindex de025d3..074c8f7 100644[m
+[1m--- a/backend/database.py[m
+[1m+++ b/backend/database.py[m
+[36m@@ -60,7 +60,7 @@[m [masync def require_profile_complete([m
+     둘 중 하나라도 NULL이면 400 반환.[m
+     DB에는 nullable로 두고 앱 레벨에서 강제하는 패턴.[m
+     """[m
+[31m-    from routers.auth import verify_access_token[m
+[32m+[m[32m    from core.security import verify_access_token[m
+     from models import User[m
+     from sqlalchemy.future import select[m
+ [m
+
+[33mcommit 43a3329bb5f175234699b7981dae6624cdd3fc78[m
+Author: sjs33az <dhdnjsfjqm@example.com>
+Date:   Fri May 29 22:35:06 2026 +0900
+
+    fix: birth_date 타입 수정, classification_id NOT NULL 제거, summaries TEXT 수정
+
+[1mdiff --git a/backend/database.py b/backend/database.py[m
+[1mindex 17efe7f..de025d3 100644[m
+[1m--- a/backend/database.py[m
+[1m+++ b/backend/database.py[m
+[36m@@ -1,6 +1,6 @@[m
+ #  DB 연결 설정[m
+ import os[m
+[31m-from fastapi import HTTPException[m
+[32m+[m[32mfrom fastapi import HTTPException, Header[m
+ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession[m
+ from sqlalchemy.orm import sessionmaker[m
+ from dotenv import load_dotenv[m
+[36m@@ -36,20 +36,44 @@[m [masync def get_db_audit():[m
+         yield session[m
+ [m
+ # 5. 설문 진입 가드[m
+[31m-async def require_profile_complete(current_user):[m
+[32m+[m[32m# ⚠️ 이 함수는 classifications 라우터에서 아래처럼 사용하세요:[m
+[32m+[m[32m#[m
+[32m+[m[32m# from database import require_profile_complete[m
+[32m+[m[32m# from routers.auth import verify_access_token[m
+[32m+[m[32m#[m
+[32m+[m[32m# @router.post("/classifications/start")[m
+[32m+[m[32m# async def start_classification([m
+[32m+[m[32m#     authorization: str = Header(...),[m
+[32m+[m[32m#     _: None = Depends(require_profile_complete),[m
+[32m+[m[32m#     db_general: AsyncSession = Depends(get_db_general),[m
+[32m+[m[32m# ):[m
+[32m+[m[32m#     token = authorization.replace("Bearer ", "")[m
+[32m+[m[32m#     current_user = verify_access_token(token)[m
+[32m+[m[32m#     ...[m
+[32m+[m
+[32m+[m[32masync def require_profile_complete([m
+[32m+[m[32m    authorization: str = Header(...),[m
+[32m+[m[32m    db_general: AsyncSession = get_db_general()  # 세션 직접 주입 안 됨 → 라우터에서 처리 권장[m
+[32m+[m[32m):[m
+     """[m
+     1차 설문 진입 전 birth_date · gender 필수 입력 검사.[m
+     둘 중 하나라도 NULL이면 400 반환.[m
+     DB에는 nullable로 두고 앱 레벨에서 강제하는 패턴.[m
+[31m-[m
+[31m-    사용법:[m
+[31m-        @router.post("/classifications/start")[m
+[31m-        async def start_classification([m
+[31m-            current_user: User = Depends(get_current_user),[m
+[31m-            _: None = Depends(require_profile_complete),[m
+[31m-        ):[m
+     """[m
+[31m-    if current_user.birth_date is None or current_user.gender is None:[m
+[32m+[m[32m    from routers.auth import verify_access_token[m
+[32m+[m[32m    from models import User[m
+[32m+[m[32m    from sqlalchemy.future import select[m
+[32m+[m
+[32m+[m[32m    token = authorization.replace("Bearer ", "")[m
+[32m+[m[32m    payload = verify_access_token(token)[m
+[32m+[m
+[32m+[m[32m    async with SessionLocalGeneral() as session:[m
+[32m+[m[32m        result = await session.execute([m
+[32m+[m[32m            select(User).where(User.id == payload["user_id"])[m
+[32m+[m[32m        )[m
+[32m+[m[32m        user = result.scalar()[m
+[32m+[m
+[32m+[m[32m    if not user or user.birth_date is None or user.gender is None:[m
+         raise HTTPException([m
+             status_code=400,[m
+             detail={[m
+[36m@@ -57,8 +81,8 @@[m [masync def require_profile_complete(current_user):[m
+                 "message": "설문을 시작하기 전에 생년월일과 성별을 입력해야 합니다.",[m
+                 "missing_fields": [[m
+                     field for field, value in {[m
+[31m-                        "birth_date": current_user.birth_date,[m
+[31m-                        "gender": current_user.gender,[m
+[32m+[m[32m                        "birth_date": user.birth_date if user else None,[m
+[32m+[m[32m                        "gender": user.gender if user else None,[m
+                     }.items() if value is None[m
+                 ],[m
+             }[m
+
+[33mcommit 7c114cde928c0e7f4bcefc2fa5b7a1e29b1ac731[m
+Author: sjs33az <dhdnjsfjqm@example.com>
+Date:   Tue May 26 15:38:29 2026 +0900
+
+    feat: jwt 인증 구현 및 민감DB  테이블 추가
+
+[1mdiff --git a/backend/database.py b/backend/database.py[m
+[1mindex 9d7bcb2..17efe7f 100644[m
+[1m--- a/backend/database.py[m
+[1m+++ b/backend/database.py[m
+[36m@@ -1,5 +1,6 @@[m
+ #  DB 연결 설정[m
+ import os[m
+[32m+[m[32mfrom fastapi import HTTPException[m
+ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession[m
+ from sqlalchemy.orm import sessionmaker[m
+ from dotenv import load_dotenv[m
+[36m@@ -26,6 +27,39 @@[m [masync def get_db_general():[m
+     async with SessionLocalGeneral() as session:[m
+         yield session[m
+ [m
+[32m+[m[32masync def get_db_sensitive():[m
+[32m+[m[32m    async with SessionLocalSensitive() as session:[m
+[32m+[m[32m        yield session[m
+[32m+[m
+ async def get_db_audit():[m
+     async with SessionLocalAudit() as session:[m
+[31m-        yield session[m
+\ No newline at end of file[m
+[32m+[m[32m        yield session[m
+[32m+[m
+[32m+[m[32m# 5. 설문 진입 가드[m
+[32m+[m[32masync def require_profile_complete(current_user):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    1차 설문 진입 전 birth_date · gender 필수 입력 검사.[m
+[32m+[m[32m    둘 중 하나라도 NULL이면 400 반환.[m
+[32m+[m[32m    DB에는 nullable로 두고 앱 레벨에서 강제하는 패턴.[m
+[32m+[m
+[32m+[m[32m    사용법:[m
+[32m+[m[32m        @router.post("/classifications/start")[m
+[32m+[m[32m        async def start_classification([m
+[32m+[m[32m            current_user: User = Depends(get_current_user),[m
+[32m+[m[32m            _: None = Depends(require_profile_complete),[m
+[32m+[m[32m        ):[m
+[32m+[m[32m    """[m
+[32m+[m[32m    if current_user.birth_date is None or current_user.gender is None:[m
+[32m+[m[32m        raise HTTPException([m
+[32m+[m[32m            status_code=400,[m
+[32m+[m[32m            detail={[m
+[32m+[m[32m                "code": "PROFILE_INCOMPLETE",[m
+[32m+[m[32m                "message": "설문을 시작하기 전에 생년월일과 성별을 입력해야 합니다.",[m
+[32m+[m[32m                "missing_fields": [[m
+[32m+[m[32m                    field for field, value in {[m
+[32m+[m[32m                        "birth_date": current_user.birth_date,[m
+[32m+[m[32m                        "gender": current_user.gender,[m
+[32m+[m[32m                    }.items() if value is None[m
+[32m+[m[32m                ],[m
+[32m+[m[32m            }[m
+[32m+[m[32m        )[m
+\ No newline at end of file[m
+
+[33mcommit b01b138e8e523f6684a305a9c6dec9eb28383287[m
+Author: sjs33az <dhdnjsfjqm@example.com>
+Date:   Thu May 21 19:27:28 2026 +0900
+
+    feat: backend init and signup API
+
+[1mdiff --git a/backend/database.py b/backend/database.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..9d7bcb2[m
+[1m--- /dev/null[m
+[1m+++ b/backend/database.py[m
+[36m@@ -0,0 +1,31 @@[m
+[32m+[m[32m#  DB 연결 설정[m
+[32m+[m[32mimport os[m
+[32m+[m[32mfrom sqlalchemy.ext.asyncio import create_async_engine, AsyncSession[m
+[32m+[m[32mfrom sqlalchemy.orm import sessionmaker[m
+[32m+[m[32mfrom dotenv import load_dotenv[m
+[32m+[m
+[32m+[m[32mload_dotenv()[m
+[32m+[m
+[32m+[m[32m# 1. 3개의 DB URL 가져오기 (비동기 설정인 +asyncpg 추가)[m
+[32m+[m[32mGENERAL_DB_URL = os.getenv("DATABASE_URL_GENERAL").replace("postgresql://", "postgresql+asyncpg://")[m
+[32m+[m[32mSENSITIVE_DB_URL = os.getenv("DATABASE_URL_SENSITIVE").replace("postgresql://", "postgresql+asyncpg://")[m
+[32m+[m[32mAUDIT_DB_URL = os.getenv("DATABASE_URL_AUDIT").replace("postgresql://", "postgresql+asyncpg://")[m
+[32m+[m
+[32m+[m[32m# 2. 각각의 엔진 생성[m
+[32m+[m[32mengine_general = create_async_engine(GENERAL_DB_URL, echo=True)[m
+[32m+[m[32mengine_sensitive = create_async_engine(SENSITIVE_DB_URL, echo=True)[m
+[32m+[m[32mengine_audit = create_async_engine(AUDIT_DB_URL, echo=True)[m
+[32m+[m
+[32m+[m[32m# 3. 세션 메이커 생성[m
+[32m+[m[32mSessionLocalGeneral = sessionmaker(engine_general, class_=AsyncSession, expire_on_commit=False)[m
+[32m+[m[32mSessionLocalSensitive = sessionmaker(engine_sensitive, class_=AsyncSession, expire_on_commit=False)[m
+[32m+[m[32mSessionLocalAudit = sessionmaker(engine_audit, class_=AsyncSession, expire_on_commit=False)[m
+[32m+[m
+[32m+[m[32m# 4. 의존성 주입용 함수 (FastAPI에서 사용)[m
+[32m+[m[32masync def get_db_general():[m
+[32m+[m[32m    async with SessionLocalGeneral() as session:[m
+[32m+[m[32m        yield session[m
+[32m+[m
+[32m+[m[32masync def get_db_audit():[m
+[32m+[m[32m    async with SessionLocalAudit() as session:[m
+[32m+[m[32m        yield session[m
+\ No newline at end of file[m
