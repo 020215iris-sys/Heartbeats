@@ -30,7 +30,7 @@ def login():
             session["role"] = result["role"]
 
             flash("환영해요! 로그인되었어요.", "info")
-            return redirect(url_for("chat.room"))
+            return  redirect(url_for("main.landing"))
         else:
             flash("이메일이나 비밀번호가 올바르지 않아요.", "error")
 
