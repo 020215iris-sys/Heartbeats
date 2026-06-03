@@ -103,6 +103,9 @@ def room():
         if not user_message:
             flash("메시지를 입력해주세요.", "error")
             return redirect(url_for("chat.room"))
+        
+        # append 전에 history 저장 — 현재 메시지 미포함 상태
+        history_before = _get_messages()
 
         # 사용자 메시지 저장
         now = datetime.now().strftime("%H:%M")
@@ -112,10 +115,10 @@ def room():
         if is_guest:
             guest_svc.increment_message_count()
 
-        # ===== 3. AI 응답 (백엔드 /chat 호출) =====
+        # ===== 3. AI 응답 (백엔드 /chat 호출) ===== 
         ai_reply = api_client.send_chat_message(
             user_message=user_message,
-            history=_get_messages(),
+            history=history_before,
             user_id=session.get("user_id"),
         )
 

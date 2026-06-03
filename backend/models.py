@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, String, Boolean, Float, Text,
+    Column, String, Boolean, Float, Text, LargeBinary,
     DateTime, Integer, SmallInteger, Date, ForeignKey
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
@@ -124,7 +124,7 @@ class Conversation(BaseSensitive):
     user_id           = Column(UUID(as_uuid=True), nullable=False)
     role              = Column(String, nullable=False)
     message_type      = Column(String, default="text")
-    encrypted_content = Column(Text, nullable=False)
+    encrypted_content = Column(LargeBinary, nullable=False)
     encryption_key_id = Column(String, default="none")
     crisis_score      = Column(Float, nullable=True)
     created_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
