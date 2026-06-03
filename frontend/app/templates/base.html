@@ -23,12 +23,41 @@
   </script>
 </head>
 
-<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
-  <header class="border-b border-slate-200 bg-white">
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased overflow-x-hidden">
+
+  {# 왼쪽 사이드바 — appShell 뒤에 깔려 있다가 셸이 밀리면 드러남 #}
+  <aside id="drawer" class="fixed inset-y-0 left-0 z-10 w-64 bg-white">
+    <div class="flex h-14 items-center border-b border-slate-200 px-4 font-semibold">메뉴</div>
+    <nav class="flex flex-col p-2 text-sm text-slate-700">
+      <a href="{{ url_for('main.landing') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">홈</a>
+      <a href="{{ url_for('chat.room') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">채팅</a>
+      <a href="{{ url_for('survey.initial') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">자가진단</a>
+      {% if current_user.status == "authenticated" %}
+      <a href="#" class="rounded-md px-3 py-2 hover:bg-slate-100">이전 채팅</a>
+      <a href="#" class="rounded-md px-3 py-2 hover:bg-slate-100">설정</a>
+      <a href="{{ url_for('auth.logout') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">로그아웃</a>
+      {% else %}
+      <a href="{{ url_for('auth.login') }}" class="rounded-md px-3 py-2 hover:bg-slate-100">로그인</a>
+      {% endif %}
+    </nav>
+  </aside>
+
+  {# 축소 대상 셸: 헤더 + flash + main 전체를 감쌈 #}
+  <div id="appShell"
+    class="relative z-20 min-h-screen bg-slate-50 transition-[margin] duration-200 ease-out">
+
+  <header class="sticky top-0 z-30 border-b border-slate-200 bg-white">
     <div class="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-      <a href="{{ url_for('main.landing') }}" class="font-semibold">
-        ❤ 하트비트
-      </a>
+      <div class="flex items-center gap-2">
+        <button id="menuBtn" type="button" aria-label="메뉴 열기"
+          class="-ml-2 rounded-md p-2 text-slate-700 hover:bg-slate-100">
+          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+               stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <a href="{{ url_for('main.landing') }}" class="font-semibold">❤ 하트비트</a>
+      </div>
       <nav class="flex items-center gap-3 text-sm text-slate-600">
         {% if current_user.status == "authenticated" %}
 
@@ -91,6 +120,29 @@
   {% endwith %}
 
   <main>{% block content %}{% endblock %}</main>
+  </div>{# /appShell #}
+
+  <script>
+    (function () {
+      const btn = document.getElementById('menuBtn');
+      const shell = document.getElementById('appShell');
+      const KEY = 'drawerOpen';
+
+      // 저장된 상태 복원 — 초기 로드 시 슬라이드 애니메이션은 잠시 끔
+      if (localStorage.getItem(KEY) === '1') {
+        shell.classList.add('transition-none', 'ml-64');
+        requestAnimationFrame(() => requestAnimationFrame(
+          () => shell.classList.remove('transition-none')));
+      }
+
+      // 버튼 토글 + 상태 저장
+      btn.addEventListener('click', () => {
+        const open = shell.classList.toggle('ml-64');
+        localStorage.setItem(KEY, open ? '1' : '0');
+      });
+    })();
+  </script>
+
   {% block scripts %}{% endblock %}
 </body>
 

@@ -157,65 +157,65 @@
 
     {# ====== 비밀번호 관련 JS ====== #}
     <script>
-  // ── 눈 버튼: password ↔ text 토글 ──
-  function togglePassword(fieldId, btn) {
-    const input = document.getElementById(fieldId);
-    const isHidden = input.type === 'password';
-    input.type = isHidden ? 'text' : 'password';
-    btn.innerHTML = isHidden
-      ? `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      // ── 눈 버튼: password ↔ text 토글 ──
+      function togglePassword(fieldId, btn) {
+        const input = document.getElementById(fieldId);
+        const isHidden = input.type === 'password';
+        input.type = isHidden ? 'text' : 'password';
+        btn.innerHTML = isHidden
+          ? `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
            <line x1="1" y1="1" x2="23" y2="23"/>
          </svg>`
-      : `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          : `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
            <circle cx="12" cy="12" r="3"/>
          </svg>`;
-  }
+      }
 
-  // ── 비밀번호 길이 체크 ──
-  document.getElementById('password').addEventListener('input', function () {
-    const msg = document.getElementById('pw-length-msg');
-    if (msg) msg.style.display = this.value.length >= 8 ? 'none' : 'block';
-    checkMatch();
-  });
+      // ── 비밀번호 길이 체크 ──
+      document.getElementById('password').addEventListener('input', function () {
+        const msg = document.getElementById('pw-length-msg');
+        if (msg) msg.style.display = this.value.length >= 8 ? 'none' : 'block';
+        checkMatch();
+      });
 
-  // ── 비밀번호 확인 일치 여부 ──
-  function checkMatch() {
-    const pw   = document.getElementById('password').value;
-    const cpw  = document.getElementById('password_confirm').value;
-    const msg  = document.getElementById('match-msg');
-    const serverErr = document.getElementById('server-confirm-err');
+      // ── 비밀번호 확인 일치 여부 ──
+      function checkMatch() {
+        const pw = document.getElementById('password').value;
+        const cpw = document.getElementById('password_confirm').value;
+        const msg = document.getElementById('match-msg');
+        const serverErr = document.getElementById('server-confirm-err');
 
-    // 입력 시작하면 서버 에러 숨김
-    if (serverErr && cpw.length > 0) serverErr.style.display = 'none';
+        // 입력 시작하면 서버 에러 숨김
+        if (serverErr && cpw.length > 0) serverErr.style.display = 'none';
 
-    if (!msg) return;
-    if (!cpw) { msg.textContent = ''; return; }
+        if (!msg) return;
+        if (!cpw) { msg.textContent = ''; return; }
 
-    if (pw === cpw) {
-      msg.textContent = '비밀번호가 일치해요 ✓';
-      msg.className = 'mt-1 text-xs text-emerald-600';
-    } else {
-      msg.textContent = '비밀번호가 일치하지 않아요';
-      msg.className = 'mt-1 text-xs text-red-500';
-    }
-  }
+        if (pw === cpw) {
+          msg.textContent = '비밀번호가 일치해요 ✓';
+          msg.className = 'mt-1 text-xs text-emerald-600';
+        } else {
+          msg.textContent = '비밀번호가 일치하지 않아요';
+          msg.className = 'mt-1 text-xs text-red-500';
+        }
+      }
 
-  // ── 입력 시작하면 서버 에러 숨기기 (이메일/닉네임/휴대폰) ──
-  [
-    ['email',        'err-email'],
-    ['nickname',     'err-nickname'],
-    ['phone_number', 'err-phone'],
-  ].forEach(([fieldId, errId]) => {
-    const field = document.getElementById(fieldId);
-    const err   = document.getElementById(errId);
-    if (field && err) {
-      field.addEventListener('input', () => err.style.display = 'none');
-    }
-  });
-</script>
+      // ── 입력 시작하면 서버 에러 숨기기 (이메일/닉네임/휴대폰) ──
+      [
+        ['email', 'err-email'],
+        ['nickname', 'err-nickname'],
+        ['phone_number', 'err-phone'],
+      ].forEach(([fieldId, errId]) => {
+        const field = document.getElementById(fieldId);
+        const err = document.getElementById(errId);
+        if (field && err) {
+          field.addEventListener('input', () => err.style.display = 'none');
+        }
+      });
+    </script>
 
 
     {# ====== 가입 버튼 ====== #}
