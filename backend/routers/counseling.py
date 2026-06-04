@@ -46,6 +46,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
     try:
         summary_result = request_summary(transcript)
         raw_output = summary_result["output"]
+
         try:
             summary_data = yaml.safe_load(raw_output)
             if not isinstance(summary_data, dict):
@@ -102,23 +103,53 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         core_topics: {summary_data.get("core_topics", [])}
         next_session_notes: {summary_data.get("next_session_notes", "")}
         prompt_adjustment: {summary_data.get("prompt_adjustment", {})}"""
-        risk_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": risk_prompt}]
-        )
-        risk_text = risk_response.choices[0].message.content.strip()
-        risk_parsed = json.loads(risk_text)
-        summary_data["risk_level"] = risk_parsed.get("risk_level", "low")
-        summary_data["suicidal_mentioned"] = risk_parsed.get("suicidal_mentioned", False)
+        
+
+        # ── 위험도 분류는 "독립 try"로 분리한다 ──────────────────────────
+        # 이 블록 안에서 Groq 호출이나 json 파싱이 실패해도, 바깥 try로
+        # 예외가 새어나가지 않으므로 위에서 만든 요약(summary_data)이 보존된다.
+
+        # 1) 기본값을 먼저 넣어둔다.
+        #    아래가 실패하면 risk 필드만 이 기본값(low/False)으로 남는다.
+        summary_data.setdefault("risk_level", "low")
+        summary_data.setdefault("suicidal_mentioned", False)
+
+        try:
+            # 2) Groq에 위험도 판단 요청
+            risk_response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": risk_prompt}]
+            )
+
+            risk_text = risk_response.choices[0].message.content.strip()
+
+            # 4) 모델이 ```json ... ``` 코드펜스로 감싸 주는 경우 방어
+            #    (지금 char 0 에러의 유력한 원인. 펜스/json 라벨 제거 후 파싱)
+            if risk_text.startswith("```"):
+                risk_text = risk_text.strip("`").strip()
+                if risk_text[:4].lower() == "json":
+                    risk_text = risk_text[4:].strip()
+
+            # 5) 빈 문자열이면 json.loads가 터지므로 건너뛰고 기본값을 유지
+            if risk_text:
+                risk_parsed = json.loads(risk_text)
+                summary_data["risk_level"] = risk_parsed.get("risk_level", "low")
+                summary_data["suicidal_mentioned"] = risk_parsed.get("suicidal_mentioned", False)
+
+        except Exception as e:
+            # 위험도 분류 실패 → risk는 기본값(low/False) 유지, 요약 본문은 보존
+            pass
+
     except Exception:
-        summary_data = {
-            "main_complaint": "",
-            "risk_level": "low",
-            "suicidal_mentioned": False,
-            "core_topics": [],
-            "next_session_notes": "",
-            "prompt_adjustment": {}
-        }
+            # 요약 생성/파싱 자체가 실패하면 빈 요약으로 저장(흐름 중단 방지)
+            summary_data = {
+                "main_complaint": "",
+                "risk_level": "low",
+                "suicidal_mentioned": False,
+                "core_topics": [],
+                "next_session_notes": "",
+                "prompt_adjustment": {}
+            }
 
     new_summary = Summary(
         session_id=session.id,
