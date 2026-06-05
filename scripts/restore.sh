@@ -30,6 +30,14 @@ if [ "$CONFIRM" != "yes" ]; then
   exit 0
 fi
 
+# 안전 확인 (yes 입력 후, 복구 시작 전)
+for db in general sensitive audit; do
+  if [ ! -s "${BACKUP_DIR}/${db}.sql" ]; then
+    echo "❌ ${BACKUP_DIR}/${db}.sql이 없거나 비어있음. 복구 중단."
+    exit 1
+  fi
+done
+
 echo "🔄 복구 시작..."
 
 # general
@@ -37,19 +45,19 @@ echo "🔄 복구 시작..."
 # 중간에 한 줄이라도 실패하면 자동 ROLLBACK → 부분 복구 상태 방지.
 echo "  → general DB..."
 docker exec -i heartbeat_db_general \
-  psql -U heartbeat -d heartbeat_general --single-transaction \
+  psql -U heartbeat -d heartbeat_general --single-transaction -v ON_ERROR_STOP=1 \
   < "${BACKUP_DIR}/general.sql"
 
 # sensitive
 echo "  → sensitive DB..."
 docker exec -i heartbeat_db_sensitive \
-  psql -U heartbeat -d heartbeat_sensitive --single-transaction \
+  psql -U heartbeat -d heartbeat_sensitive --single-transaction -v ON_ERROR_STOP=1 \
   < "${BACKUP_DIR}/sensitive.sql"
 
 # audit
 echo "  → audit DB..."
 docker exec -i heartbeat_db_audit \
-  psql -U heartbeat -d heartbeat_audit --single-transaction \
+  psql -U heartbeat -d heartbeat_audit --single-transaction -v ON_ERROR_STOP=1 \
   < "${BACKUP_DIR}/audit.sql"
 
 echo "✅ 복구 완료"
