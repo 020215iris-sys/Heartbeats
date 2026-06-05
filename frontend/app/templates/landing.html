@@ -64,7 +64,33 @@
       그냥 시작하기 →
     </a>
   </div>
-
+  
   {% endif %}
 </section>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+    {# 공통 푸터 #}
+    <footer class="bg-black text-white py-8">
+      <div class="container mx-auto px-4 text-center">
+        <p class="text-gray-400 text-sm">© 2026 ♥️하트비트 HeartBeat. 히히.</p>
+        <p class="text-gray-400 text-xs mt-2">
+          하트비트은 전문 의료 서비스가 아닙니다. 긴급 상황 시 전문 기관에 연락하세요.
+        </p>
+        <div class="flex justify-center gap-4 mt-3 text-xs text-gray-400">
+          <a class="hover:text-gray-200 transition-colors" href="{{ url_for('main.privacy') }}">개인정보처리방침</a>
+          <span>·</span>
+          <a class="hover:text-gray-200 transition-colors" href="{{ url_for('main.terms') }}">이용약관</a>
+          <span>·</span>
+          <a class="hover:text-gray-200 transition-colors" href="mailto:support@heartbeat.kr">support@추후.도메인</a>
+        </div>
+      </div>
+    </footer>
+
 {% endblock %}
