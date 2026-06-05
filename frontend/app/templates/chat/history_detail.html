@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ chat.date }} 대화 · 하트비트{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-6">
+  <a href="{{ url_for('main.history') }}" class="text-sm text-slate-500 hover:text-slate-700">← 이전 채팅</a>
+  <h1 class="mt-2 text-lg font-bold text-slate-900">{{ chat.persona }}와의 대화</h1>
+  <p class="text-xs text-slate-400">{{ chat.date }}</p>
+
+  <div class="mt-5 space-y-2">
+    {% for m in messages %}
+    {% if m.role == 'assistant' %}
+    <div class="w-fit max-w-[82%] rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50
+                px-4 py-3 text-[15px] leading-6 text-slate-800 whitespace-pre-wrap">{{ m.content }}</div>
+    {% else %}
+    <div class="ml-auto w-fit max-w-[82%] rounded-2xl rounded-br-md bg-[#A47764]
+                px-4 py-3 text-[15px] leading-6 text-white whitespace-pre-wrap">{{ m.content }}</div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  
+</div>
+<div class="mt-8 text-center">
+    <a href="{{ url_for('chat.room') }}"
+       class="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">
+      + 현재채팅
+    </a>
+  </div>
+{% endblock %}
