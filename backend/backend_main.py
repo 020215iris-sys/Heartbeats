@@ -18,6 +18,8 @@ from core.crypto import encrypt_content
 from datetime import datetime, timezone, timedelta
 import json
 
+SESSION_PROMPT_CACHE: dict[str, str] = {}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine_general.begin() as conn:
@@ -102,6 +104,7 @@ async def chat(
         if elapsed > timedelta(minutes=60):
             from routers.counseling import close_session_with_summary
             await close_session_with_summary(counseling_session, db_sensitive, db_audit)
+            SESSION_PROMPT_CACHE.pop(str(counseling_session.id), None)
             # session_expired 반환 대신 조용히 세션 종료 + 새 세션 생성
             counseling_session.ended_at = datetime.now(timezone.utc)
             counseling_session.is_active = False
@@ -158,7 +161,12 @@ async def chat(
     # print("=== PROMPT AGENT INPUT ===")
     # print(prompt_agent_input)
 
-    if recent_summary:
+    cache_key = str(counseling_session.id)
+
+    if cache_key in SESSION_PROMPT_CACHE:
+        system_content = SESSION_PROMPT_CACHE[cache_key]
+
+    elif recent_summary:
         prompt_agent_input = {
             "nickname": current_user.get("nickname", "사용자"),
             "classification_results": {},
@@ -171,10 +179,6 @@ async def chat(
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
         }
-
-        print("=== PROMPT AGENT INPUT ===")
-        print(prompt_agent_input)
-
         agent_response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -183,27 +187,21 @@ async def chat(
             ]
         )
         raw = agent_response.choices[0].message.content.strip()
-
-
-
         if raw.startswith("```"):
             raw = raw.strip("`").strip()
             if raw[:4].lower() == "json":
                 raw = raw[4:].strip()
-
-
         agent_result = json.loads(raw)
-
         print("=== PROMPT AGENT OUTPUT ===")
         print(agent_result)
-
         system_content = agent_result["system_prompt"]
-
         print("=== LLM SYSTEM PROMPT ===")
         print({"role": "system", "content": system_content})
+        SESSION_PROMPT_CACHE[cache_key] = system_content
 
     else:
         system_content = ""
+
 
     # 3. Groq한테 응답 요청
     # use_summary 여부에 따라 history vs 요약 선택
