@@ -49,4 +49,12 @@ def create_app(config_class: type = Config) -> Flask:
             }
         }
     
+    @app.context_processor
+    def inject_recent_chats():
+        from .services.chat_history import get_recent_chats
+        # 로그인 상태에서만 사이드바에 최근 3개 주입
+        if "access_token" in session:
+            return {"recent_chats": get_recent_chats(limit=3)}
+        return {"recent_chats": []}
+    
     return app
