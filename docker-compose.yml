@@ -28,6 +28,7 @@ services:
       POSTGRES_USER: heartbeat
       POSTGRES_PASSWORD: ${DB_GENERAL_PASSWORD}
       POSTGRES_DB: heartbeat_general
+      DB_GENERAL_APP_PASSWORD: ${DB_GENERAL_APP_PASSWORD}   # ← init/05_app_role.sh가 참조
       TZ: Asia/Seoul
     ports:
       - "5432:5432"
@@ -54,6 +55,7 @@ services:
       POSTGRES_USER: heartbeat
       POSTGRES_PASSWORD: ${DB_SENSITIVE_PASSWORD}
       POSTGRES_DB: heartbeat_sensitive
+      DB_SENSITIVE_APP_PASSWORD: ${DB_SENSITIVE_APP_PASSWORD} # ← init/10_app_role.sh가 참조
       TZ: Asia/Seoul
     ports:
       - "5433:5432"
@@ -127,6 +129,7 @@ services:
       - "8000:8000"
     volumes:                    # ← 이 두 줄 추가
       - ./backend:/app          # ← (들여쓰기 주의 — api와 같은 레벨의 자식)      
+      - ./ai:/ai           # ← 추가: AI 프롬프트/모듈 파일 마운트 (다은 담당 영역)
     depends_on:
       db_general:
         condition: service_healthy
