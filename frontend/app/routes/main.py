@@ -13,3 +13,11 @@ def landing():
 def start_guest():
     guest_svc.start_guest_session()
     return redirect(url_for("chat.room"))
+
+@bp.route("/terms")
+def terms():
+    return render_template("legal/terms.html")
+
+@bp.route("/privacy")
+def privacy():
+    return render_template("legal/privacy.html")
