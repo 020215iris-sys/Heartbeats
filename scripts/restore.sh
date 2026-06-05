@@ -41,6 +41,8 @@ done
 echo "🔄 복구 시작..."
 
 # general
+# --single-transaction: 백업 SQL 전체를 BEGIN/COMMIT으로 감쌈.
+# 중간에 한 줄이라도 실패하면 자동 ROLLBACK → 부분 복구 상태 방지.
 echo "  → general DB..."
 docker exec -i heartbeat_db_general \
   psql -U heartbeat -d heartbeat_general --single-transaction -v ON_ERROR_STOP=1 \

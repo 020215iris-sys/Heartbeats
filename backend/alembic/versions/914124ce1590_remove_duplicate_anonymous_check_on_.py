@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_constraint('users_role_check', 'users', type_='check')
+    op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
     pass
 
 
