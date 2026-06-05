@@ -33,21 +33,23 @@ fi
 echo "🔄 복구 시작..."
 
 # general
+# --single-transaction: 백업 SQL 전체를 BEGIN/COMMIT으로 감쌈.
+# 중간에 한 줄이라도 실패하면 자동 ROLLBACK → 부분 복구 상태 방지.
 echo "  → general DB..."
 docker exec -i heartbeat_db_general \
-  psql -U heartbeat -d heartbeat_general \
+  psql -U heartbeat -d heartbeat_general --single-transaction \
   < "${BACKUP_DIR}/general.sql"
 
 # sensitive
 echo "  → sensitive DB..."
 docker exec -i heartbeat_db_sensitive \
-  psql -U heartbeat -d heartbeat_sensitive \
+  psql -U heartbeat -d heartbeat_sensitive --single-transaction \
   < "${BACKUP_DIR}/sensitive.sql"
 
 # audit
 echo "  → audit DB..."
 docker exec -i heartbeat_db_audit \
-  psql -U heartbeat -d heartbeat_audit \
+  psql -U heartbeat -d heartbeat_audit --single-transaction \
   < "${BACKUP_DIR}/audit.sql"
 
 echo "✅ 복구 완료"

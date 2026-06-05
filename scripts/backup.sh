@@ -19,18 +19,22 @@ echo "  → general DB..."
 docker exec heartbeat_db_general \
   pg_dump -U heartbeat -d heartbeat_general --clean --if-exists \
   > "${BACKUP_DIR}/general.sql"
+# 빈 파일 가드: pg_dump가 stderr만 뱉고 exit 0 내는 경우 방지
+[ -s "${BACKUP_DIR}/general.sql" ] || { echo "❌ general.sql 비어있음 (백업 실패)"; exit 1; }
 
 # sensitive
 echo "  → sensitive DB..."
 docker exec heartbeat_db_sensitive \
   pg_dump -U heartbeat -d heartbeat_sensitive --clean --if-exists \
   > "${BACKUP_DIR}/sensitive.sql"
+[ -s "${BACKUP_DIR}/sensitive.sql" ] || { echo "❌ sensitive.sql 비어있음 (백업 실패)"; exit 1; }
 
 # audit
 echo "  → audit DB..."
 docker exec heartbeat_db_audit \
   pg_dump -U heartbeat -d heartbeat_audit --clean --if-exists \
   > "${BACKUP_DIR}/audit.sql"
+[ -s "${BACKUP_DIR}/audit.sql" ] || { echo "❌ audit.sql 비어있음 (백업 실패)"; exit 1; }
 
 # 파일 크기 출력
 echo ""
