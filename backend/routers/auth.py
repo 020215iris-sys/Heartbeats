@@ -21,10 +21,11 @@ ALLOWED_SIGNUP_ROLES = {"user", "guardian"}
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_HOURS = 24
 
-def create_access_token(user_id: str, role: str) -> str:
+def create_access_token(user_id: str, role: str, nickname: str = "") -> str:
     payload = {
         "user_id": user_id,
         "role": role,
+        "nickname": nickname, 
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -98,7 +99,7 @@ async def signup(
         await db_general.commit()
         await db_audit.commit()
 
-        access_token = create_access_token(str(new_user.id), new_user.role)
+        access_token = create_access_token(str(new_user.id), new_user.role, new_user.nickname)
         return {
             "id": str(new_user.id),
             "email": new_user.email,
@@ -162,7 +163,7 @@ async def login(
         await db_general.commit()
         await db_audit.commit()
 
-        access_token = create_access_token(str(user.id), user.role)
+        access_token = create_access_token(str(user.id), user.role, user.nickname)
         return {
             "id": str(user.id),
             "email": user.email,
@@ -210,7 +211,7 @@ async def refresh(
     if not user or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
 
-    access_token = create_access_token(str(user.id), user.role)
+    access_token = create_access_token(str(user.id), user.role, user.nickname)
     return {"access_token": access_token}
 
 

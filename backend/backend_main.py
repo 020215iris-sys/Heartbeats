@@ -40,8 +40,9 @@ with open(AGENT_PROMPT_PATH, "r", encoding="utf-8") as f:
     AGENT_PROMPT = f.read()
 
 def contains_foreign(text: str) -> bool:
-    pattern = r"[一-龯ぁ-ゔァ-ヴー々〆〤a-zA-Z]"
-    return re.search(pattern, text) is not None
+    # 한글, 공백, 숫자, 문장부호만 허용
+    pattern = r"[^\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s0-9.,!?~\-\'\"()…·]"
+    return bool(re.search(pattern, text))
 
 class Message(BaseModel):
     message: str
@@ -86,6 +87,7 @@ async def chat(
         await db_sensitive.flush()
 
     # 2-1. 마지막 메시지 시간 체크 (60분 타이머)s
+
     use_summary = False  #  요약 기반 여부 플래그
 
     last_msg = await db_sensitive.execute(
@@ -120,47 +122,88 @@ async def chat(
         .order_by(Summary.created_at.desc())
         .limit(1)
     )
+    
     recent_summary = summary_result.scalar()
 
-    prompt_agent_input = {
-        "nickname": current_user.get("nickname", "사용자"),
-        "classification_results": {},
-        "summary": {
-            "main_complaint": recent_summary.main_complaint if recent_summary else "",
-            "core_topics": recent_summary.core_topics if recent_summary else [],
-            "next_session_notes": recent_summary.next_session_notes if recent_summary else "",
-            "prompt_adjustment": recent_summary.prompt_adjustment if recent_summary else {},
-        },
-        "risk_level": recent_summary.risk_level if recent_summary else "low",
-        "suicidal_mentioned": recent_summary.suicidal_mentioned if recent_summary else False,
-    }
+    # 테스트용 
+    # prompt_agent_input = {
+    #     "nickname": "사용자",
+    #     "classification_results": {},
 
-    print("=== PROMPT AGENT INPUT ===")
-    print(prompt_agent_input)
+    #     "summary": {
+    #         "main_complaint": "부모와의 갈등으로 인한 스트레스",
+    #         "core_topics": [
+    #             "부모갈등",
+    #             "가족관계",
+    #             "스트레스"
+    #         ],
+    #         "next_session_notes": "부모와 대화 시도 결과 확인 필요",
+    #         "prompt_adjustment": [
+    #             "emotional_support",
+    #             "reflection",
+    #             "family_relationship"
+    #         ],
+    #     },
 
-    
-    agent_response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": AGENT_PROMPT},
-            {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
-        ]
-    )
-    raw = agent_response.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.strip("`").strip()
-        if raw[:4].lower() == "json":
-            raw = raw[4:].strip()
+    #     "important_memory": [
+    #         "사용자는 형과 지속적으로 비교당한다고 느낌",
+    #         "부모와 솔직하게 대화해보기로 약속함",
+    #         "취업 면접 결과를 기다리고 있음"
+    #     ],
 
-    agent_result = json.loads(raw)
+    #     "risk_level": "medium",
+    #     "suicidal_mentioned": False,
+    # }
 
-    print("=== PROMPT AGENT OUTPUT ===")
-    print(agent_result)
+    # print("=== PROMPT AGENT INPUT ===")
+    # print(prompt_agent_input)
 
-    system_content = agent_result["system_prompt"]
+    if recent_summary:
+        prompt_agent_input = {
+            "nickname": current_user.get("nickname", "사용자"),
+            "classification_results": {},
+            "summary": {
+                "main_complaint": recent_summary.main_complaint,
+                "core_topics": recent_summary.core_topics,
+                "next_session_notes": recent_summary.next_session_notes,
+                "prompt_adjustment": recent_summary.prompt_adjustment,
+            },
+            "risk_level": recent_summary.risk_level,
+            "suicidal_mentioned": recent_summary.suicidal_mentioned,
+        }
 
-    print("=== LLM SYSTEM PROMPT ===")
-    print({"role": "system", "content": system_content})
+        print("=== PROMPT AGENT INPUT ===")
+        print(prompt_agent_input)
+
+        agent_response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": AGENT_PROMPT},
+                {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
+            ]
+        )
+        raw = agent_response.choices[0].message.content.strip()
+
+
+
+        if raw.startswith("```"):
+            raw = raw.strip("`").strip()
+            if raw[:4].lower() == "json":
+                raw = raw[4:].strip()
+
+
+        agent_result = json.loads(raw)
+
+        print("=== PROMPT AGENT OUTPUT ===")
+        print(agent_result)
+
+        system_content = agent_result["system_prompt"]
+
+        print("=== LLM SYSTEM PROMPT ===")
+        print({"role": "system", "content": system_content})
+
+    else:
+        system_content = ""
 
     # 3. Groq한테 응답 요청
     # use_summary 여부에 따라 history vs 요약 선택
@@ -196,7 +239,7 @@ async def chat(
         )
         reply = response.choices[0].message.content
         if contains_foreign(reply):
-            reply = "오늘은 유난히 지친 하루였나 보네요."
+            reply = "죄송해요. 그 부분에 대한 건 답변이 어려워요."
 
     # 4. 사용자 메시지 저장
     ciphertext, key_id = encrypt_content(body.message)
