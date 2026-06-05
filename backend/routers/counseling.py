@@ -47,6 +47,35 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         summary_result = request_summary(transcript)
         raw_output = summary_result["output"]
 
+        print("=== SUMMARY ===")
+        print(raw_output)
+
+        memory_prompt = f"""
+        상담 내용을 읽고
+
+        사용자가 다음 상담에서 기억받기를 기대할 만한
+        중요 사건만 추출하라.
+
+        감정상태 제외
+        사건만 추출
+        최대 3개
+
+        상담 내용:
+        {transcript}
+        """
+
+        memory_response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role":"user","content":memory_prompt}
+            ]
+        )
+
+        important_memory = memory_response.choices[0].message.content
+
+        print("=== IMPORTANT MEMORY ===")
+        print(important_memory)
+
         try:
             summary_data = yaml.safe_load(raw_output)
             if not isinstance(summary_data, dict):
