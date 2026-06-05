@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 import bcrypt
-from database import get_db_general, get_db_audit, get_db_sensitive
+from database import get_db_general, get_db_audit, get_db_sensitive, SessionLocalSensitive, SessionLocalAudit
 from models import User, AuditLogGeneral, Session, CounselingSession
 from sqlalchemy.future import select
 from datetime import datetime, timezone, timedelta, date
@@ -220,13 +220,43 @@ async def refresh(
 class LogoutRequest(BaseModel):
     refresh_token: str
 
+async def _summarize_in_background(user_id):
+    """응답 후 백그라운드 실행. 요청 세션은 닫히므로 새 세션을 직접 연다."""
+    from routers.counseling import close_session_with_summary  # 순환 import 방지
+    async with SessionLocalSensitive() as db_sensitive, SessionLocalAudit() as db_audit:
+        # 1) 이 사용자의 active 세션을 "최근 시작 순"으로 전부 가져온다.
+        result = await db_sensitive.execute(
+            select(CounselingSession)
+            .where(
+                CounselingSession.user_id == user_id,
+                CounselingSession.is_active == True,
+                CounselingSession.deleted_at == None,
+            )
+            .order_by(CounselingSession.started_at.desc())
+        )
+        active_sessions = result.scalars().all()
+        if not active_sessions:
+            return
+
+        # 2) 가장 최근 세션 = 방금 종료한 세션 → 이것만 요약한다.
+        current = active_sessions[0]
+        await close_session_with_summary(current, db_sensitive, db_audit)
+
+        # 3) 나머지 오래 남아있던 active 세션은 요약 없이 닫기만 한다(세션 정리).
+        now = datetime.now(timezone.utc)
+        for stale in active_sessions[1:]:
+            stale.is_active = False
+            stale.ended_at = now
+
+        # 4) 요약 1건 + 정리된 세션들을 함께 커밋
+        await db_sensitive.commit()
+        await db_audit.commit()
+
 @router.post("/logout")
 async def logout(
     body: LogoutRequest,
-    authorization: str = Header(...),
+    background_tasks: BackgroundTasks,
     db_general: AsyncSession = Depends(get_db_general),
-    db_sensitive: AsyncSession = Depends(get_db_sensitive),
-    db_audit: AsyncSession = Depends(get_db_audit)
 ):
     result = await db_general.execute(
         select(Session).where(
@@ -239,25 +269,11 @@ async def logout(
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
 
+    # 진행 중인 상담 세션 요약은 응답 후 백그라운드에서 처리
+    background_tasks.add_task(_summarize_in_background, session.user_id)
+
+    # refresh_token revoke
     session.revoked_at = datetime.now(timezone.utc)
     await db_general.commit()
-
-    # 상담 세션 요약 저장
-    try:
-        token = authorization.replace("Bearer ", "")
-        current_user = verify_access_token(token)
-        active = await db_sensitive.execute(
-            select(CounselingSession).where(
-                CounselingSession.user_id == uuid.UUID(current_user["user_id"]),
-                CounselingSession.is_active == True
-            )
-        )
-        counseling_session = active.scalar()
-        if counseling_session:
-            from routers.counseling import close_session_with_summary
-            await close_session_with_summary(counseling_session, db_sensitive, db_audit)
-            await db_sensitive.commit()
-    except Exception:
-        pass
 
     return {"message": "로그아웃 되었습니다."}

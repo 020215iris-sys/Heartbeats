@@ -1,5 +1,6 @@
+from datetime import date
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, RadioField
+from wtforms import StringField, PasswordField, BooleanField, RadioField, DateField
 from wtforms.validators import (
     DataRequired,
     Email,
@@ -8,6 +9,7 @@ from wtforms.validators import (
     AnyOf,
     Optional,
     Regexp,
+    ValidationError
 )
 
 # 역할 선택지 (사용자, 보호자)
@@ -16,7 +18,10 @@ ROLE_CHOICES = [
     ("guardian", "보호자"),
 ]
 
-
+def validate_birth_date(form, field):
+    if field.data and field.data > date.today():
+        raise ValidationError("미래 날짜는 입력할 수 없습니다.")
+    
 # ====== 로그인부분 ======
 class LoginForm(FlaskForm):
     # ====== 아이디 (USERS.id) ======
@@ -70,6 +75,27 @@ class SignupForm(FlaskForm):
         validators=[
             DataRequired(message="닉네임을 입력해주세요"),
             Length(min=2, max=20, message="닉네임은 2~20자로 입력해주세요"),
+        ],
+    )
+    # ====== 생년월일 (USERS.birth_date) ======
+    birth_date = DateField(
+        "생년월일",
+        format="%Y-%m-%d",
+        validators=[Optional(), validate_birth_date],
+        description="선택 입력입니다.",
+        render_kw={
+            "autocomplete": "bday",
+            "min": "1900-01-01",
+            "max": date.today().isoformat(),
+        },
+    )
+    # ====== 성별 (USERS.gender) ======
+    gender = RadioField(
+        "성별",
+        choices=[("male", "남"), ("female", "여"), ("unspecified", "무응답")],
+        validators=[
+            DataRequired(message="성별을 선택해주세요"),
+            AnyOf(["male", "female", "unspecified"], message="잘못된 성별이에요"),
         ],
     )
     # ====== 휴대폰 번호 (USERS.phone_number) ======

@@ -16,6 +16,7 @@ from routers import auth, counseling
 from core.security import verify_access_token
 from core.crypto import encrypt_content
 from datetime import datetime, timezone, timedelta
+import json
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,9 +35,9 @@ client = OpenAI(
     base_url="https://api.groq.com/openai/v1",
 )
 
-PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../ai/prompts/active/general_prompt.txt")
-with open(PROMPT_PATH, "r", encoding="utf-8") as f:
-    SYSTEM_PROMPT = f.read()
+AGENT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../ai/prompts/active/prompt_agent_prompt.txt")
+with open(AGENT_PROMPT_PATH, "r", encoding="utf-8") as f:
+    AGENT_PROMPT = f.read()
 
 def contains_foreign(text: str) -> bool:
     pattern = r"[一-龯ぁ-ゔァ-ヴー々〆〤a-zA-Z]"
@@ -113,22 +114,53 @@ async def chat(
             use_summary = True  # 이제 요약 기반으로 대화
 
     # 2-2. 요약 기반이면 DB에서 최근 요약 조회 
-    system_content = SYSTEM_PROMPT
-    if use_summary:
-        summary_result = await db_sensitive.execute(
-            select(Summary)
-            .where(Summary.user_id == uuid.UUID(current_user["user_id"]))
-            .order_by(Summary.created_at.desc())
-            .limit(1)
-        )
-        recent_summary = summary_result.scalar()
-        if recent_summary:
-            system_content = SYSTEM_PROMPT + (
-                f"\n\n[이전 상담 요약]"
-                f"\n주요 호소: {recent_summary.main_complaint}"
-                f"\n핵심 주제: {recent_summary.core_topics}"
-                f"\n다음 상담 이어갈 내용: {recent_summary.next_session_notes}"
-            )
+    summary_result = await db_sensitive.execute(
+        select(Summary)
+        .where(Summary.user_id == uuid.UUID(current_user["user_id"]))
+        .order_by(Summary.created_at.desc())
+        .limit(1)
+    )
+    recent_summary = summary_result.scalar()
+
+    prompt_agent_input = {
+        "nickname": current_user.get("nickname", "사용자"),
+        "classification_results": {},
+        "summary": {
+            "main_complaint": recent_summary.main_complaint if recent_summary else "",
+            "core_topics": recent_summary.core_topics if recent_summary else [],
+            "next_session_notes": recent_summary.next_session_notes if recent_summary else "",
+            "prompt_adjustment": recent_summary.prompt_adjustment if recent_summary else {},
+        },
+        "risk_level": recent_summary.risk_level if recent_summary else "low",
+        "suicidal_mentioned": recent_summary.suicidal_mentioned if recent_summary else False,
+    }
+
+    print("=== PROMPT AGENT INPUT ===")
+    print(prompt_agent_input)
+
+    
+    agent_response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": AGENT_PROMPT},
+            {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
+        ]
+    )
+    raw = agent_response.choices[0].message.content.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`").strip()
+        if raw[:4].lower() == "json":
+            raw = raw[4:].strip()
+
+    agent_result = json.loads(raw)
+
+    print("=== PROMPT AGENT OUTPUT ===")
+    print(agent_result)
+
+    system_content = agent_result["system_prompt"]
+
+    print("=== LLM SYSTEM PROMPT ===")
+    print({"role": "system", "content": system_content})
 
     # 3. Groq한테 응답 요청
     # use_summary 여부에 따라 history vs 요약 선택
@@ -149,7 +181,7 @@ async def chat(
 
     # 외국어 감지 시 재요청
     if contains_foreign(reply):
-        foreign_system = system_content + "\n\n반드시 한국어로만 응답하세요. 영어나 다른 언어를 절대 사용하지 마세요."
+        foreign_system = system_content + "\n\n반드시 한글로만 응답하세요. 영어나 다른 언어를 절대 사용하지 마세요."
         messages_foreign = (
             [{"role": "system", "content": foreign_system},
              {"role": "user", "content": body.message}]
@@ -163,6 +195,8 @@ async def chat(
             messages=messages_foreign
         )
         reply = response.choices[0].message.content
+        if contains_foreign(reply):
+            reply = "오늘은 유난히 지친 하루였나 보네요."
 
     # 4. 사용자 메시지 저장
     ciphertext, key_id = encrypt_content(body.message)
@@ -172,7 +206,7 @@ async def chat(
         role="user",
         message_type="text",
         encrypted_content=ciphertext,
-        encryption_key_id="none"
+        encryption_key_id=key_id
     )
     db_sensitive.add(user_msg)
 
@@ -184,8 +218,9 @@ async def chat(
         role="assistant",
         message_type="text",
         encrypted_content=ciphertext,
-        encryption_key_id="none"
+        encryption_key_id=key_id
     )
+
     db_sensitive.add(ai_msg)
 
     # 6. 감사 로그

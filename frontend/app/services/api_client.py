@@ -51,6 +51,8 @@ def signup(
     role: str,
     nickname: str,
     phone_number: str,
+    gender: str | None = None,
+    birth_date: str | None = None,
 ) -> dict:
     """
     가입 성공 시 payload 반환.
@@ -68,6 +70,8 @@ def signup(
                 "role": role,
                 "nickname": nickname,
                 "phone_number": phone_number,
+                "gender": gender,
+                "birth_date": birth_date,
             },
             timeout=5,
         )
