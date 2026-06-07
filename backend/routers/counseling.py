@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional
 from database import get_db_sensitive, get_db_audit
 from models import CounselingSession, Conversation, CrisisEvent, AuditLogSensitive, Summary
 from sqlalchemy.future import select
+from sqlalchemy import func
 from datetime import datetime, timezone
 from core.security import get_current_user
 from openai import OpenAI
@@ -194,7 +195,90 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
     await db_sensitive.flush()
     return new_summary
 
+# ==========================================
+# 내 세션 목록 조회
+# ==========================================
 
+@router.get("/sessions")
+async def get_my_sessions(
+    current_user: dict = Depends(get_current_user),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    limit: Optional[int] = Query(default=None, ge=1, le=100),
+):
+    user_id = uuid.UUID(current_user["user_id"])
+
+    stmt = (
+        select(CounselingSession)
+        .where(
+            CounselingSession.user_id == user_id,
+            CounselingSession.deleted_at == None
+        )
+        .order_by(CounselingSession.started_at.desc())
+    )
+    if limit:
+        stmt = stmt.limit(limit)
+
+    result = await db_sensitive.execute(stmt)
+    sessions = result.scalars().all()
+
+    session_ids = [s.id for s in sessions]
+
+    # 세션별 message_count
+    count_result = await db_sensitive.execute(
+        select(Conversation.session_id, func.count(Conversation.id).label("cnt"))
+        .where(
+            Conversation.session_id.in_(session_ids),
+            Conversation.deleted_at == None
+        )
+        .group_by(Conversation.session_id)
+    )
+    count_map = {row.session_id: row.cnt for row in count_result}
+
+    # 세션별 summary → preview
+    summary_result = await db_sensitive.execute(
+        select(Summary)
+        .where(Summary.user_id == user_id)
+        .order_by(Summary.created_at.desc())
+    )
+    summaries = summary_result.scalars().all()
+    summary_map = {}
+    for s in summaries:
+        if s.session_id and s.session_id not in summary_map:
+            summary_map[s.session_id] = s.main_complaint
+
+    # 요약 없는 세션 → 첫 사용자 메시지 50자로 대체
+    sessions_needing_fallback = [s.id for s in sessions if s.id not in summary_map]
+    fallback_map = {}
+    if sessions_needing_fallback:
+        fallback_result = await db_sensitive.execute(
+            select(Conversation)
+            .where(
+                Conversation.session_id.in_(sessions_needing_fallback),
+                Conversation.role == "user",
+                Conversation.deleted_at == None
+            )
+            .order_by(Conversation.created_at.asc())
+        )
+        for msg in fallback_result.scalars().all():
+            if msg.session_id not in fallback_map:
+                try:
+                    text = decrypt_content(msg.encrypted_content, msg.encryption_key_id)
+                    fallback_map[msg.session_id] = text[:50]
+                except Exception:
+                    fallback_map[msg.session_id] = ""
+
+    return {
+        "sessions": [
+            {
+                "session_id": str(s.id),
+                "started_at": s.started_at.isoformat(),
+                "persona_type": s.persona_type,
+                "preview": summary_map.get(s.id) or fallback_map.get(s.id, ""),
+                "message_count": count_map.get(s.id, 0),
+            }
+            for s in sessions
+        ]
+    }
 # ==========================================
 # 상담 세션 시작
 # ==========================================
@@ -431,7 +515,7 @@ async def get_messages(
                 "message_id": str(m.id),
                 "role": m.role,
                 "message_type": m.message_type,
-                "content": m.encrypted_content,
+                "content": decrypt_content(m.encrypted_content, m.encryption_key_id),
                 "crisis_score": m.crisis_score,
                 "created_at": m.created_at.isoformat()
             }
