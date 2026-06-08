@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 # parent.parent = backend 폴더
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# .env 파일 읽기 (DATABASE_URL_GENERAL 가져오기 위함)
+# .env 파일 읽기 (ADMIN_DATABASE_URL_GENERAL 가져오기 위함)
 load_dotenv()
 
 # ORM 모델의 metadata 가져오기
@@ -26,12 +26,20 @@ from models import BaseGeneral
 config = context.config
 
 # ──────────────────────────────────────────
-# .env의 DATABASE_URL_GENERAL을 alembic 설정에 동적으로 주입
-# alembic.ini의 sqlalchemy.url 라인을 덮어씀 (alembic.ini는 빈 값으로 둘 거임)
+# 옵션 B Phase 3: alembic 마이그레이션은 OWNER 계정(heartbeat)으로 실행
+# - 백엔드 트래픽은 general_app(제한 계정)을 쓰지만, 마이그레이션은
+#   DDL(CREATE/ALTER/DROP TABLE 등)이 필요하므로 OWNER 계정이 필수
+# - 환경변수 ADMIN_DATABASE_URL_GENERAL을 backend/.env에서 읽어옴
+# - 누락 시 명확한 에러로 즉시 중단 (기존 None.replace() AttributeError 대신)
 # ──────────────────────────────────────────
-db_url = os.getenv("DATABASE_URL_GENERAL").replace(
-    "postgresql://", "postgresql+asyncpg://"
-)
+admin_url = os.getenv("ADMIN_DATABASE_URL_GENERAL")
+if not admin_url:
+    raise RuntimeError(
+        "ADMIN_DATABASE_URL_GENERAL 환경변수가 없습니다. "
+        "alembic 마이그레이션은 OWNER(heartbeat) 계정으로 실행돼야 합니다. "
+        "backend/.env에서 ADMIN_DATABASE_URL_GENERAL 확인하세요."
+    )
+db_url = admin_url.replace("postgresql://", "postgresql+asyncpg://")
 config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.

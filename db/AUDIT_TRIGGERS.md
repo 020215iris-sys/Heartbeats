@@ -189,7 +189,10 @@ SELECT srvname, usename FROM pg_user_mappings WHERE srvname = 'audit_server';
 - **DDL은 잡지 않음**: 트리거는 DML(INSERT/UPDATE/DELETE)만 감지. 스키마 변경(CREATE TABLE/ALTER 등)은 alembic이 별도 관리.
 - **트리거 함수가 SECURITY DEFINER (heartbeat 권한)**: 마이그레이션 실행 시점 사용자가 함수 OWNER. USER MAPPING이 `FOR heartbeat`인 이유.
 - **resource_type 매핑 누락 시**: CASE문에 없는 새 테이블에 트리거 부착하면 `upper(TG_TABLE_NAME)` 폴백. 의도하지 않은 표기 가능 — 새 테이블 추가 시 CASE문도 업데이트 권장.
-
+- **옵션 B(RBAC)와 호환됨**: 백엔드가 `sensitive_app`(제한 계정)으로 INSERT해도
+  `SECURITY DEFINER` 덕분에 트리거 함수가 `heartbeat`(OWNER) 권한으로 실행되어
+  audit 자동 기록이 그대로 작동함. 검증 결과 트리거 → fdw → audit DB INSERT가
+  23ms 이내에 완료됨을 확인. 자세한 메커니즘은 [`db/RBAC.md`](RBAC.md) 4장 참조.
 ---
 
 ## 13. 마이그레이션 파일 + 명령
@@ -225,7 +228,13 @@ docker compose exec api alembic -c alembic_sensitive.ini downgrade base
 
 ---
 
+
 ## 14. 트리거 비활성화 (테스트 한정)
+
+⚠️ **이 명령은 OWNER 권한이 필요합니다.** 옵션 B 적용 후 백엔드 계정
+(`sensitive_app`)으로는 `DISABLE TRIGGER`가 자동 차단됩니다 — 이게 권한 분리의
+의도된 효과입니다. 테스트 목적으로 비활성화하려면 `heartbeat` 계정으로 접속해야
+합니다.
 
 ```sql
 -- 임시 비활성화 (개별 테이블)

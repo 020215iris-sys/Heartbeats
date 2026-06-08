@@ -21,9 +21,20 @@ from models import BaseAudit
 # access to the values within the .ini file in use.
 config = context.config
 
-db_url = os.getenv("DATABASE_URL_AUDIT").replace(
-    "postgresql://", "postgresql+asyncpg://"
-)
+# ──────────────────────────────────────────
+# 옵션 B Phase 3: alembic 마이그레이션은 OWNER 계정(heartbeat)으로 실행
+# - 백엔드 트래픽은 audit_writer(INSERT/SELECT만) 사용, 마이그레이션은 OWNER
+# - audit DB는 특히 audit_writer가 DDL/UPDATE/DELETE 권한이 없어서
+#   ADMIN URL 없이는 마이그레이션 자체가 불가능
+# ──────────────────────────────────────────
+admin_url = os.getenv("ADMIN_DATABASE_URL_AUDIT")
+if not admin_url:
+    raise RuntimeError(
+        "ADMIN_DATABASE_URL_AUDIT 환경변수가 없습니다. "
+        "alembic 마이그레이션은 OWNER(heartbeat) 계정으로 실행돼야 합니다. "
+        "backend/.env에서 ADMIN_DATABASE_URL_AUDIT 확인하세요."
+    )
+db_url = admin_url.replace("postgresql://", "postgresql+asyncpg://")
 config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.

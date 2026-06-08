@@ -21,10 +21,21 @@ from models import BaseSensitive
 
 config = context.config
 
-# ★ sensitive DB URL 동적 주입
-db_url = os.getenv("DATABASE_URL_SENSITIVE").replace(
-    "postgresql://", "postgresql+asyncpg://"
-)
+# ──────────────────────────────────────────
+# 옵션 B Phase 3: alembic 마이그레이션은 OWNER 계정(heartbeat)으로 실행
+# - 백엔드 트래픽은 sensitive_app(제한 계정), 마이그레이션은 OWNER
+# - 이 환경은 F-1/F-2 audit 트리거 마이그레이션을 포함하는데,
+#   트리거 함수 OWNER가 heartbeat라야 USER MAPPING FOR heartbeat이 작동함
+#   (SECURITY DEFINER 동작 일관성 유지)
+# ──────────────────────────────────────────
+admin_url = os.getenv("ADMIN_DATABASE_URL_SENSITIVE")
+if not admin_url:
+    raise RuntimeError(
+        "ADMIN_DATABASE_URL_SENSITIVE 환경변수가 없습니다. "
+        "alembic 마이그레이션은 OWNER(heartbeat) 계정으로 실행돼야 합니다. "
+        "backend/.env에서 ADMIN_DATABASE_URL_SENSITIVE 확인하세요."
+    )
+db_url = admin_url.replace("postgresql://", "postgresql+asyncpg://")
 config.set_main_option("sqlalchemy.url", db_url)
 
 
