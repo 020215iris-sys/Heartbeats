@@ -14,7 +14,7 @@ import json
 import os
 import yaml
 from core.crypto import decrypt_content
-from summary_service import request_summary
+from services.summary_service import request_summary
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
 
