@@ -97,6 +97,9 @@ services:
     networks:
       - heartbeat_net
 
+
+
+
   # ===========================================
   # Redis: Celery 브로커 + 세션/OTP 임시 저장
   # ===========================================
@@ -113,6 +116,10 @@ services:
       retries: 5
     networks:
       - heartbeat_net
+
+
+
+
 
   # FastAPI 백엔드는 컨테이너
   api:
@@ -142,3 +149,36 @@ services:
     networks:
       - heartbeat_net
     command: uvicorn backend_main:app --host 0.0.0.0 --port 8000
+
+
+
+
+  # ===========================================
+  # Celery Worker: 비동기 태스크 처리
+  # - api와 같은 Dockerfile/코드를 사용 (FastAPI와 코드 공유)
+  # - 명령어만 celery worker로 다름
+  # ===========================================
+  celery_worker:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: heartbeat_celery_worker
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_AUDIT_WRITER_PASSWORD: ${DB_AUDIT_WRITER_PASSWORD}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db_general:
+        condition: service_healthy
+      db_sensitive:
+        condition: service_healthy
+      db_audit:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - heartbeat_net
+    command: celery -A celery_app worker --loglevel=info --concurrency=2
