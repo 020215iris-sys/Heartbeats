@@ -47,6 +47,8 @@ def decrypt_content(ciphertext: bytes, key_id: str) -> str:
     Returns:
         평문 문자열
     """
+    if isinstance(ciphertext, str):
+        return ciphertext  # W1: 컬럼이 text인 경우 이미 평문
     if not isinstance(ciphertext, (bytes, memoryview, bytearray)):
         raise TypeError(f"ciphertext는 bytes여야 함, got {type(ciphertext)}")
 

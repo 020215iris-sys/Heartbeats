@@ -175,7 +175,7 @@ async def chat(
                 "core_topics": recent_summary.core_topics,
                 "next_session_notes": recent_summary.next_session_notes,
                 "prompt_adjustment": recent_summary.prompt_adjustment,
-            },
+            }, "important_memory": recent_summary.important_memory or [],
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
         }
@@ -216,7 +216,10 @@ async def chat(
     )
     reply = response.choices[0].message.content
 
+
+    print("=== REPLY CHECK ===", reply)
     # 외국어 감지 시 재요청
+
     if contains_foreign(reply):
         foreign_system = system_content + "\n\n반드시 한글로만 응답하세요. 영어나 다른 언어를 절대 사용하지 마세요."
         messages_foreign = (
