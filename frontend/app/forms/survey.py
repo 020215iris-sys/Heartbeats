@@ -9,7 +9,7 @@ FlaskForm 서브클래스를 동적으로 생성한다.
 
 from flask_wtf import FlaskForm
 from wtforms import RadioField
-from wtforms.validators import DataRequired
+from wtforms.validators import InputRequired
 
 
 def build_survey_form(instrument: dict) -> type[FlaskForm]:
@@ -46,7 +46,7 @@ def build_survey_form(instrument: dict) -> type[FlaskForm]:
             choices=instrument["choices"],
 
             # 응답 누락 시 에러 메시지
-            validators=[DataRequired(message="응답을 선택해주세요")],
+            validators=[InputRequired(message="응답을 선택해주세요")],
 
             # ⚠️ 중요: 폼 제출 시 문자열로 오는 값을 int로 변환.
             # 이게 없으면 sum() 할 때 문자열을 더하려 해서 TypeError.
