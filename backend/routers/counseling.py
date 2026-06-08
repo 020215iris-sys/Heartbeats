@@ -190,6 +190,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         core_topics=summary_data.get("core_topics", []),
         prompt_adjustment=summary_data.get("prompt_adjustment", {}),    
         next_session_notes=summary_data.get("next_session_notes", ""),
+        important_memory=important_memory,   # ← 이 줄 추가
         )
     db_sensitive.add(new_summary)
     await db_sensitive.flush()
