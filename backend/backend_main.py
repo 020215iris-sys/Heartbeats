@@ -192,11 +192,7 @@ async def chat(
             if raw[:4].lower() == "json":
                 raw = raw[4:].strip()
         agent_result = json.loads(raw)
-        print("=== PROMPT AGENT OUTPUT ===")
-        print(agent_result)
         system_content = agent_result["system_prompt"]
-        print("=== LLM SYSTEM PROMPT ===")
-        print({"role": "system", "content": system_content})
         SESSION_PROMPT_CACHE[cache_key] = system_content
 
     else:
@@ -265,13 +261,20 @@ async def chat(
     db_sensitive.add(ai_msg)
 
     # 6. 감사 로그
-    audit_log = AuditLogSensitive(
+    audit_log_user = AuditLogSensitive(
         user_id=uuid.UUID(current_user["user_id"]),
         action="CREATE",
         resource_type="CONVERSATION",
         resource_id=user_msg.id
     )
-    db_audit.add(audit_log)
+    audit_log_ai = AuditLogSensitive(
+        user_id=uuid.UUID(current_user["user_id"]),
+        action="CREATE",
+        resource_type="CONVERSATION",
+        resource_id=ai_msg.id
+    )
+    db_audit.add(audit_log_user)
+    db_audit.add(audit_log_ai)
 
     await db_sensitive.commit()
     await db_audit.commit()
