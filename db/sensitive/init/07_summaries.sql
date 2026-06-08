@@ -11,7 +11,8 @@ CREATE TABLE summaries (
     core_topics        JSONB,                         -- 핵심 주제
     next_session_notes TEXT,                         -- 다음 상담 이어갈 내용
     prompt_adjustment  JSONB,                 -- 권장 상담 방향 조정
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    important_memory   JSONB
 );
 CREATE INDEX idx_sum_session_id ON summaries(session_id);
 CREATE INDEX idx_sum_user_id    ON summaries(user_id);
