@@ -1,0 +1,24 @@
+main_complaint:
+흡연을 줄이거나 금연하고 싶지만 심심함과 사회적 관계로 인해 습관적으로 담배를 피우고 있음
+
+core_topics:
+- 흡연습관
+- 금연동기
+- 체중증가불안
+- 사회적관계
+- 주의전환훈련
+
+next_session_notes:
+금연 시도 과정에서 대체 행동 실천 경험과 체중 증가에 대한 인식 변화 탐색 필요
+
+prompt_adjustment:
+- smoking_cessation_support
+- cognitive_restructuring
+- behavioral_substitution
+
+important_memory:
+- 취업 준비 중이며 공부와 병행하여 금연 상담을 받고 있음.
+- 담배를 끊으려는 주요 이유는 건강 관리와 자기 통제력 향상임.
+- 과거 금연 시도 당시 군것질이 늘어나 체중 증가를 경험해 금연 후 체중 증가를 걱정하고 있음.
+- 낚시를 취미로 하며 실내에서는 컴퓨터 게임과 영화 감상을 즐김.
+- 평소 청소와 정리정돈을 좋아하며 집안 청소를 꾸준히 하는 편임.
