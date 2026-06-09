@@ -143,7 +143,7 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
                         flask_session["chat_session_id"] = str(uuid.uuid4())
                         chat_session_id = flask_session["chat_session_id"]
                         retry = requests.post(
-                            f"{_base_url()}/chat",
+                            f"{_base_url()}/counseling/chat",
                             json={
                                 "message": user_message,
                                 "session_id": chat_session_id,
