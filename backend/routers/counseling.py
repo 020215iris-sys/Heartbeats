@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional
@@ -14,9 +14,32 @@ import json
 import os
 import yaml
 from core.crypto import decrypt_content
-from summary_service import request_summary
+from services.summary_service import request_summary
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
+
+class ChatMessage(BaseModel):
+    message: str
+    session_id: str
+    history: list[dict] = []
+
+@router.post("/chat")
+async def chat(
+    body: ChatMessage,
+    authorization: str = Header(...),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    db_audit: AsyncSession = Depends(get_db_audit),
+):
+    from services.chat_service import process_chat
+    reply = await process_chat(
+        message=body.message,
+        session_id=body.session_id,
+        history=body.history,
+        token=authorization,
+        db_sensitive=db_sensitive,
+        db_audit=db_audit,
+    )
+    return {"reply": reply}
 
 groq_client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
