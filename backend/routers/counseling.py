@@ -67,6 +67,8 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         for m in messages
     ])
 
+    important_memory = []  # 기본값 (try 실패 시 빈 리스트로 저장)
+
     try:
         summary_result = request_summary(transcript)
         raw_output = summary_result["output"]
