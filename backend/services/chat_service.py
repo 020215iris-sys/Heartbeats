@@ -123,6 +123,7 @@ async def process_chat(
 
     if cache_key in SESSION_PROMPT_CACHE:
         system_content = SESSION_PROMPT_CACHE[cache_key]
+        print("=== PROMPT: 캐시 사용 ===")
 
     elif recent_summary:
         # 재상담: Agent가 요약 기반으로 system_prompt 생성
@@ -145,21 +146,26 @@ async def process_chat(
                 {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
             ]
         )
+        print("=== PROMPT: 재상담 - Agent 생성 ===")
         raw = agent_response.choices[0].message.content.strip()
         if raw.startswith("```"):
             raw = raw.strip("`").strip()
             if raw[:4].lower() == "json":
                 raw = raw[4:].strip()
         agent_result = json.loads(raw)
-        system_content = agent_result["system_prompt"]
+        system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
         SESSION_PROMPT_CACHE[cache_key] = system_content
 
     else:
         # 첫 대화: general_prompt 사용
         system_content = GENERAL_PROMPT
         SESSION_PROMPT_CACHE[cache_key] = system_content
+        print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
 
     # 5. Groq 응답 요청
+    print("=== PROMPT 사용 ===")
+    print(f"=== {system_content} ===")
+    print("===================")
     messages_to_send = (
         [{"role": "system", "content": system_content},
          {"role": "user", "content": message}]
