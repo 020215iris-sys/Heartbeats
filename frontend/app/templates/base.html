@@ -11,6 +11,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: "class",
       theme: {
         extend: {
           colors: {
@@ -23,6 +24,78 @@
       },
     };
   </script>
+  <script>
+    // 다크모드 깜빡임 방지 — 페인트 전에 저장된 테마 적용
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <style>
+    .dark {
+      color-scheme: dark;
+    }
+
+    /* 페이지 바탕(가장 어둡게) */
+    .dark body,
+    .dark #appShell {
+      background-color: #0f172a !important;
+    }
+
+    /* 표면: 헤더·사이드바·카드·말풍선·모달 */
+    .dark .bg-white {
+      background-color: #1e293b !important;
+    }
+
+    .dark .bg-slate-50 {
+      background-color: #1e293b !important;
+    }
+
+    .dark .bg-slate-100 {
+      background-color: #334155 !important;
+    }
+
+    /* 글자 */
+    .dark .text-slate-900 {
+      color: #f1f5f9 !important;
+    }
+
+    .dark .text-slate-800 {
+      color: #e2e8f0 !important;
+    }
+
+    .dark .text-slate-700 {
+      color: #cbd5e1 !important;
+    }
+
+    .dark .text-slate-600 {
+      color: #cbd5e1 !important;
+    }
+
+    .dark .text-slate-500 {
+      color: #94a3b8 !important;
+    }
+
+    .dark .text-slate-400 {
+      color: #94a3b8 !important;
+    }
+
+    /* 테두리 */
+    .dark .border-slate-100,
+    .dark .border-slate-200,
+    .dark .border-slate-300 {
+      border-color: #334155 !important;
+    }
+
+    /* hover 배경 */
+    .dark .hover\:bg-slate-100:hover {
+      background-color: #334155 !important;
+    }
+
+    .dark .has-\[\:checked\]\:bg-brand-50:has(:checked) {
+      background-color: #1e293b !important;
+    }
+  </style>
 </head>
 
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased overflow-x-hidden">
@@ -63,7 +136,8 @@
       <div id="historyList" class="hidden space-y-1 pl-2">
         {# 최근 3개 (백엔드 붙으면 started_at DESC LIMIT 3로 교체) #}
         {% for c in recent_chats %}
-<a href="javascript:void(0)" onclick="openHistoryModal('{{ c.id }}')" class="block rounded-md px-3 py-2 hover:bg-slate-100">
+        <a href="javascript:void(0)" onclick="openHistoryModal('{{ c.id }}')"
+          class="block rounded-md px-3 py-2 hover:bg-slate-100">
           <div class="text-xs text-slate-400">{{ c.date }}</div>
           <div class="truncate text-sm text-slate-700">{{ c.preview }}</div>
         </a>
@@ -72,7 +146,7 @@
         <p class="px-3 py-2 text-xs text-slate-400">아직 저장된 대화가 없어요.</p>
         {% endif %}
 
-        {# 모두 보기 → 전체 목록 페이지(1안) #}
+        {# 모두 보기 #}
         <a href="{{ url_for('main.history') }}" class="mt-1 block rounded-md border-t border-slate-100 px-3 py-2 text-center
             text-sm font-medium text-brand-600 hover:bg-slate-100">
           모두 보기
@@ -102,6 +176,12 @@
         </div>
 
         <nav class="flex items-center gap-3 text-sm text-slate-600">
+          <button id="darkToggle" type="button" aria-label="다크모드 전환"
+            class="rounded-md p-2 text-slate-600 hover:bg-slate-100">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+            </svg>
+          </button>
           {% if current_user.status == "authenticated" %}
 
           <span class="text-slate-500">
@@ -324,6 +404,16 @@
     integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ=="
     data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'
     crossorigin="anonymous"></script>
+  <script>
+    (function () {
+      const btn = document.getElementById('darkToggle');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      });
+    })();
+  </script>
 </body>
 
 </html>
