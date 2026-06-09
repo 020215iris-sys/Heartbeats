@@ -15,11 +15,17 @@ from services.audit_service import log_sensitive
 
 load_dotenv()
 
+# ─────────────────────────────────────────
+# Groq 클라이언트
+# ─────────────────────────────────────────
 groq_client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1",
 )
 
+# ─────────────────────────────────────────
+# 프롬프트 로드
+# ─────────────────────────────────────────
 AGENT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../../ai/prompts/active/prompt_agent_prompt.txt")
 with open(AGENT_PROMPT_PATH, "r", encoding="utf-8") as f:
     AGENT_PROMPT = f.read()
@@ -28,12 +34,23 @@ GENERAL_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../../ai/prompts/
 with open(GENERAL_PROMPT_PATH, "r", encoding="utf-8") as f:
     GENERAL_PROMPT = f.read()
 
+# ─────────────────────────────────────────
+# 세션별 system_prompt 캐시
+# ─────────────────────────────────────────
 SESSION_PROMPT_CACHE: dict[str, str] = {}
 
+
+# ─────────────────────────────────────────
+# 외국어 감지
+# ─────────────────────────────────────────
 def contains_foreign(text: str) -> bool:
-    pattern = r"[^\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s0-9.,!?~\-\'\"()…·]" #수정필요함 ★
+    pattern = r"[^가-힣ᄀ-ᇿ㄰-㆏\s0-9.,!?~\-\'\"()…·]"  # 수정필요함 ★
     return bool(re.search(pattern, text))
 
+
+# ─────────────────────────────────────────
+# /chat 비즈니스 로직
+# ─────────────────────────────────────────
 async def process_chat(
     message: str,
     session_id: str,
@@ -42,6 +59,7 @@ async def process_chat(
     db_sensitive: AsyncSession,
     db_audit: AsyncSession,
 ) -> str:
+
     # 1. JWT 토큰에서 user_id 꺼내기
     token = token.replace("Bearer ", "")
     current_user = verify_access_token(token)
@@ -107,6 +125,7 @@ async def process_chat(
         system_content = SESSION_PROMPT_CACHE[cache_key]
 
     elif recent_summary:
+        # 재상담: Agent가 요약 기반으로 system_prompt 생성
         prompt_agent_input = {
             "nickname": current_user.get("nickname", "사용자"),
             "classification_results": {},
@@ -136,6 +155,7 @@ async def process_chat(
         SESSION_PROMPT_CACHE[cache_key] = system_content
 
     else:
+        # 첫 대화: general_prompt 사용
         system_content = GENERAL_PROMPT
         SESSION_PROMPT_CACHE[cache_key] = system_content
 
@@ -197,7 +217,11 @@ async def process_chat(
     )
     db_sensitive.add(ai_msg)
 
+    # 8. 감사 로그
     await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", user_msg.id)
     await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", ai_msg.id)
+
+    await db_sensitive.commit()
+    await db_audit.commit()
 
     return reply
