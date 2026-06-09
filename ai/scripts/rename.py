@@ -23,3 +23,4 @@ with open(mapping_file, encoding="utf-8-sig") as f:
             print(f"없음: {old_path.name}")
 
 print("완료")
+
