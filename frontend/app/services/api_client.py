@@ -114,7 +114,7 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
 
     try:
         res = requests.post(
-            f"{_base_url()}/chat",
+            f"{_base_url()}/counseling/chat",
             json={
                 "message": user_message,
                 "session_id": chat_session_id,  # 백엔드 필수값
@@ -203,3 +203,38 @@ def logout(refresh_token: str, access_token: str) -> None:
         )
     except requests.RequestException:
         pass
+
+def get_sessions(limit: int | None = None) -> list:
+    """내 상담 세션 목록. GET /counseling/sessions"""
+    token = flask_session.get("access_token")
+    if not token:
+        return []
+    try:
+        res = requests.get(
+            f"{_base_url()}/counseling/sessions",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"limit": limit} if limit else {},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json().get("sessions", [])
+    except requests.RequestException:
+        pass
+    return []
+
+def get_session_messages(session_id: str) -> list:
+    """세션 대화 조회. GET /counseling/sessions/{id}/messages (복호화 평문)"""
+    token = flask_session.get("access_token")
+    if not token:
+        return []
+    try:
+        res = requests.get(
+            f"{_base_url()}/counseling/sessions/{session_id}/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json().get("messages", [])
+    except requests.RequestException:
+        pass
+    return []
