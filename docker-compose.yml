@@ -168,6 +168,7 @@ services:
       - ./backend/.env
     environment:
       DB_AUDIT_WRITER_PASSWORD: ${DB_AUDIT_WRITER_PASSWORD}
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
     depends_on:
