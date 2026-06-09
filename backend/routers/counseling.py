@@ -50,9 +50,102 @@ groq_client = OpenAI(
 # 세션 종료 + 요약 저장 공통 함수
 # ==========================================
 async def close_session_with_summary(session, db_sensitive, db_audit):
-    """세션 종료 + LoRA 요약 생성 + summaries 저장 (공통 로직)"""
+    """
+    세션 종료 + 요약 저장 공통 함수.
+
+    요약 API / Groq / YAML 파싱 중 하나가 실패해도
+    summaries 저장 자체는 실패하지 않도록 방어한다.
+    """
     session.ended_at = datetime.now(timezone.utc)
     session.is_active = False
+
+    summary_data = {
+        "main_complaint": "",
+        "risk_level": "low",
+        "suicidal_mentioned": False,
+        "core_topics": [],
+        "next_session_notes": "",
+        "prompt_adjustment": [],
+    }
+    important_memory = []
+
+    def strip_code_block(text_value: str) -> str:
+        text_value = (text_value or "").strip()
+        if text_value.startswith("```"):
+            text_value = text_value.strip("`").strip()
+            if text_value[:4].lower() == "json":
+                text_value = text_value[4:].strip()
+            elif text_value[:4].lower() == "yaml":
+                text_value = text_value[4:].strip()
+        return text_value
+
+    def normalize_list(value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            items = []
+            for line in value.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("-"):
+                    line = line[1:].strip()
+                items.append(line)
+            return items
+        return []
+
+    def normalize_summary_data(data) -> dict:
+        normalized = {
+            "main_complaint": "",
+            "risk_level": "low",
+            "suicidal_mentioned": False,
+            "core_topics": [],
+            "next_session_notes": "",
+            "prompt_adjustment": [],
+        }
+
+        if not isinstance(data, dict):
+            return normalized
+
+        normalized["main_complaint"] = data.get("main_complaint") or ""
+        normalized["risk_level"] = data.get("risk_level") or "low"
+        normalized["suicidal_mentioned"] = bool(data.get("suicidal_mentioned", False))
+        normalized["core_topics"] = normalize_list(data.get("core_topics"))
+        normalized["next_session_notes"] = data.get("next_session_notes") or ""
+
+        prompt_adjustment = data.get("prompt_adjustment")
+        if isinstance(prompt_adjustment, dict):
+            normalized["prompt_adjustment"] = prompt_adjustment
+        else:
+            normalized["prompt_adjustment"] = normalize_list(prompt_adjustment)
+
+        return normalized
+
+    def parse_memory_items(text_value: str) -> list[str]:
+        items = []
+
+        for line in (text_value or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            if line.startswith("-"):
+                item = line[1:].strip()
+            elif len(line) >= 3 and line[0].isdigit() and line[1] in [".", ")"]:
+                item = line[2:].strip()
+            else:
+                continue
+
+            if item:
+                items.append(item)
+
+        if items:
+            return items[:3]
+
+        fallback = (text_value or "").strip()
+        return [fallback] if fallback else []
 
     messages_result = await db_sensitive.execute(
         select(Conversation).where(
@@ -67,142 +160,126 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         for m in messages
     ])
 
+    raw_output = ""
+
     try:
         summary_result = request_summary(transcript)
-        raw_output = summary_result["output"]
+        if isinstance(summary_result, dict):
+            raw_output = summary_result.get("output", "") or ""
 
         print("=== SUMMARY ===")
         print(raw_output)
 
+    except Exception as e:
+        print("=== SUMMARY API FAILED ===")
+        print(str(e))
+
+    if raw_output:
+        try:
+            parsed_summary = yaml.safe_load(raw_output)
+            summary_data = normalize_summary_data(parsed_summary)
+
+        except Exception as e:
+            print("=== SUMMARY YAML PARSE FAILED ===")
+            print(str(e))
+
+            parsed_fallback = {}
+            current_key = None
+            items = []
+
+            for line in raw_output.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+
+                if line.endswith(":") and not line.startswith("-"):
+                    if current_key and items:
+                        parsed_fallback[current_key] = items
+                    current_key = line[:-1]
+                    items = []
+                elif line.startswith("-") and current_key:
+                    items.append(line[1:].strip())
+                elif current_key:
+                    parsed_fallback[current_key] = line
+                    current_key = None
+
+            if current_key and items:
+                parsed_fallback[current_key] = items
+
+            summary_data = normalize_summary_data(parsed_fallback)
+
+    try:
         memory_prompt = f"""
-        상담 내용을 읽고
+상담 내용을 읽고 사용자가 다음 상담에서 기억해주기를 기대할 만한 중요한 사건만 추출하세요.
 
-        사용자가 다음 상담에서 기억받기를 기대할 만한
-        중요 사건만 추출하라.
+규칙:
+- 감정 상태는 제외
+- 구체적인 사건만 추출
+- 최대 3개
+- 반드시 목록 형태로만 출력
 
-        감정상태 제외
-        사건만 추출
-        최대 3개
-
-        상담 내용:
-        {transcript}
-        """
+상담 내용:
+{transcript}
+"""
 
         memory_response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role":"user","content":memory_prompt}
+                {"role": "user", "content": memory_prompt}
             ]
         )
 
-        important_memory = memory_response.choices[0].message.content
+        memory_text = memory_response.choices[0].message.content
+        important_memory = parse_memory_items(memory_text)
 
         print("=== IMPORTANT MEMORY ===")
         print(important_memory)
 
-        try:
-            summary_data = yaml.safe_load(raw_output)
-            if not isinstance(summary_data, dict):
-                raise ValueError("yaml 파싱 실패")
-        except:
-            summary_data = {}
-            current_key = None
-            items = []
-            for line in raw_output.splitlines():
-                line = line.strip()
-                if line.endswith(":") and not line.startswith("-"):
-                    if current_key and items:
-                        summary_data[current_key] = items
-                    current_key = line[:-1]
-                    items = []
-                elif line.startswith("-"):
-                    items.append(line[1:].strip())
-                elif line and current_key:
-                    summary_data[current_key] = line
-                    current_key = None
-            if current_key and items:
-                summary_data[current_key] = items
-        if not isinstance(summary_data, dict):
-            summary_data = {}
-        # Groq으로 risk_level / suicidal_mentioned 판단
-        risk_prompt = f"""당신은 정신건강 상담 요약을 검토하는 분류기입니다.
+    except Exception as e:
+        print("=== IMPORTANT MEMORY FAILED ===")
+        print(str(e))
+        important_memory = []
 
-        주어진 상담 요약을 읽고 다음 두 항목만 판단하세요.
+    try:
+        risk_prompt = f"""
+당신은 정신건강 상담 요약을 검토하는 분류기입니다.
 
-        1. risk_level
-        * low
-        * medium
-        * high
+아래 상담 요약을 읽고 다음 두 항목만 JSON으로 출력하세요.
 
-        2. suicidal_mentioned
-        * true
-        * false
+1. risk_level: low | medium | high
+2. suicidal_mentioned: true | false
 
-        판단 기준
+판단 규칙:
+- 자살, 자해, 죽고 싶음, 사라지고 싶음, 삶을 끝내고 싶음 등 표현이 있으면 suicidal_mentioned=true
+- suicidal_mentioned=true이면 risk_level=high
+- 반드시 JSON만 출력
+- 설명은 출력하지 마세요
 
-        low: 일반적인 스트레스, 고민, 갈등 수준. 자살 및 자해 관련 언급 없음
-        medium: 우울감, 불안감, 무기력감, 자기비난, 절망감 등이 반복적으로 나타남. 정서적 고통이 크지만 자살 또는 자해 의도는 확인되지 않음
-        high: 자살, 자해, 죽고 싶음, 사라지고 싶음, 삶에 지속 의지를 부정하는 표현, 극단적 선택 등 위험 표현이 존재함
+상담 요약:
+main_complaint: {summary_data.get("main_complaint", "")}
+core_topics: {summary_data.get("core_topics", [])}
+next_session_notes: {summary_data.get("next_session_notes", "")}
+prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
+"""
 
-        규칙
-        * 자살 또는 자해 관련 표현이 있으면 suicidal_mentioned=true
-        * suicidal_mentioned=true 이면 risk_level=high
-        * 반드시 JSON만 출력
-        * 설명 금지
-        * reason 출력 금지
+        risk_response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "user", "content": risk_prompt}
+            ]
+        )
 
-        상담 요약:
-        main_complaint: {summary_data.get("main_complaint", "")}
-        core_topics: {summary_data.get("core_topics", [])}
-        next_session_notes: {summary_data.get("next_session_notes", "")}
-        prompt_adjustment: {summary_data.get("prompt_adjustment", {})}"""
-        
-
-        # ── 위험도 분류는 "독립 try"로 분리한다 ──────────────────────────
-        # 이 블록 안에서 Groq 호출이나 json 파싱이 실패해도, 바깥 try로
-        # 예외가 새어나가지 않으므로 위에서 만든 요약(summary_data)이 보존된다.
-
-        # 1) 기본값을 먼저 넣어둔다.
-        #    아래가 실패하면 risk 필드만 이 기본값(low/False)으로 남는다.
-        summary_data.setdefault("risk_level", "low")
-        summary_data.setdefault("suicidal_mentioned", False)
-
-        try:
-            # 2) Groq에 위험도 판단 요청
-            risk_response = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": risk_prompt}]
+        risk_text = strip_code_block(risk_response.choices[0].message.content)
+        if risk_text:
+            risk_parsed = json.loads(risk_text)
+            summary_data["risk_level"] = risk_parsed.get("risk_level", "low")
+            summary_data["suicidal_mentioned"] = bool(
+                risk_parsed.get("suicidal_mentioned", False)
             )
 
-            risk_text = risk_response.choices[0].message.content.strip()
-
-            # 4) 모델이 ```json ... ``` 코드펜스로 감싸 주는 경우 방어
-            #    (지금 char 0 에러의 유력한 원인. 펜스/json 라벨 제거 후 파싱)
-            if risk_text.startswith("```"):
-                risk_text = risk_text.strip("`").strip()
-                if risk_text[:4].lower() == "json":
-                    risk_text = risk_text[4:].strip()
-
-            # 5) 빈 문자열이면 json.loads가 터지므로 건너뛰고 기본값을 유지
-            if risk_text:
-                risk_parsed = json.loads(risk_text)
-                summary_data["risk_level"] = risk_parsed.get("risk_level", "low")
-                summary_data["suicidal_mentioned"] = risk_parsed.get("suicidal_mentioned", False)
-
-        except Exception as e:
-            # 위험도 분류 실패 → risk는 기본값(low/False) 유지, 요약 본문은 보존
-            pass
-
-    except Exception:
-            # 요약 생성/파싱 자체가 실패하면 빈 요약으로 저장(흐름 중단 방지)
-            summary_data = {
-                "main_complaint": "",
-                "risk_level": "low",
-                "suicidal_mentioned": False,
-                "core_topics": [],
-                "next_session_notes": "",
-                "prompt_adjustment": {}
-            }
+    except Exception as e:
+        print("=== RISK CLASSIFICATION FAILED ===")
+        print(str(e))
 
     new_summary = Summary(
         session_id=session.id,
@@ -211,12 +288,14 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         risk_level=summary_data.get("risk_level", "low"),
         suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
         core_topics=summary_data.get("core_topics", []),
-        prompt_adjustment=summary_data.get("prompt_adjustment", {}),    
+        prompt_adjustment=summary_data.get("prompt_adjustment", []),
         next_session_notes=summary_data.get("next_session_notes", ""),
-        important_memory=important_memory,   # ← 이 줄 추가
-        )
+        important_memory=important_memory,
+    )
+
     db_sensitive.add(new_summary)
     await db_sensitive.flush()
+
     return new_summary
 
 # ==========================================

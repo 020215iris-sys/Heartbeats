@@ -12,3 +12,4 @@ Celery가 태스크를 등록하고 worker가 받아갈 수 있음.
     from .notify import send_guardian_alert
 """
 from .ping import ping_task  # 헬스체크 태스크
+from .summary import summarize_latest_active_session
