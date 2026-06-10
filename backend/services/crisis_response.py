@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from backend.services.crisis_detector import CrisisDetectionResult
+from services.crisis_detector import CrisisDetectionResult
 
 # -----------------------------------------------------------------------
 # 안내 문구 정의
