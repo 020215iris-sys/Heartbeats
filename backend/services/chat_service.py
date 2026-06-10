@@ -139,6 +139,9 @@ async def process_chat(
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
         }
+
+        print("===== AGENT INPUT =====")
+        print(json.dumps(prompt_agent_input, ensure_ascii=False, indent=2))
         agent_response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -153,6 +156,16 @@ async def process_chat(
             if raw[:4].lower() == "json":
                 raw = raw[4:].strip()
         agent_result = json.loads(raw)
+
+                # 추가
+        print("=== AGENT PARSED ===")
+        print(agent_result)
+
+        # 추가
+        print("=== AGENT SYSTEM PROMPT ===")
+        print(agent_result["system_prompt"])
+
+
         system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
         SESSION_PROMPT_CACHE[cache_key] = system_content
 
