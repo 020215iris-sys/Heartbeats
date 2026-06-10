@@ -7,7 +7,6 @@ FastAPI 백엔드(API_BASE_URL)와 HTTP로 통신.
 import requests
 import uuid
 from flask import current_app, session as flask_session
-from . import diagnosis_storage
 
 
 class SignupError(Exception):
@@ -164,30 +163,34 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
     return "현재 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요."
 
 
-def save_diagnosis(
-    user_id: str | None,
-    instrument_code: str,
-    scores: dict,
-    severities: dict,
-    follow_ups: list,
-) -> dict:
-    """
-    진단 결과 저장.
-    TODO: 백엔드에 POST /diagnoses 엔드포인트 추가되면 HTTP 호출로 교체.
-    """
-    return diagnosis_storage.save(
-        user_id=user_id,
-        instrument_code=instrument_code,
-        scores=scores,
-        severities=severities,
-        follow_ups=follow_ups,
-    )
+def get_active_survey() -> dict | None:
+    """백엔드에서 활성 설문 정의 조회. GET /surveys/active"""
+    try:
+        res = requests.get(f"{_base_url()}/surveys/active", timeout=5)
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
 
 
-def get_latest_diagnosis(user_id: str) -> dict | None:
-    """사용자의 가장 최근 진단 조회."""
-    # TODO: 백엔드 GET /diagnoses 엔드포인트 붙으면 교체
-    return diagnosis_storage.find_latest_by_user(user_id)
+def submit_survey(answers: list[int]) -> dict | None:
+    """설문 답변 제출·채점·저장. POST /surveys/active/responses (로그인 필요)"""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    try:
+        res = requests.post(
+            f"{_base_url()}/surveys/active/responses",
+            json={"answers": answers},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
 
 def logout(refresh_token: str, access_token: str) -> None:
     """
