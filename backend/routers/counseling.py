@@ -175,38 +175,41 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         print(str(e))
 
     if raw_output:
-        try:
-            parsed_summary = yaml.safe_load(raw_output)
-            summary_data = normalize_summary_data(parsed_summary)
+        if isinstance(raw_output, dict):
+            # AI 서비스가 이미 파싱된 dict 반환 → 바로 normalize
+            summary_data = normalize_summary_data(raw_output)
+        else:
+            # 문자열(YAML)로 오는 케이스 (구버전 호환)
+            try:
+                parsed_summary = yaml.safe_load(raw_output)
+                summary_data = normalize_summary_data(parsed_summary)
+            except Exception as e:
+                print("=== SUMMARY YAML PARSE FAILED ===")
+                print(str(e))
 
-        except Exception as e:
-            print("=== SUMMARY YAML PARSE FAILED ===")
-            print(str(e))
+                parsed_fallback = {}
+                current_key = None
+                items = []
 
-            parsed_fallback = {}
-            current_key = None
-            items = []
+                for line in raw_output.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.endswith(":") and not line.startswith("-"):
+                        if current_key and items:
+                            parsed_fallback[current_key] = items
+                        current_key = line[:-1]
+                        items = []
+                    elif line.startswith("-") and current_key:
+                        items.append(line[1:].strip())
+                    elif current_key:
+                        parsed_fallback[current_key] = line
+                        current_key = None
 
-            for line in raw_output.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
+                if current_key and items:
+                    parsed_fallback[current_key] = items
 
-                if line.endswith(":") and not line.startswith("-"):
-                    if current_key and items:
-                        parsed_fallback[current_key] = items
-                    current_key = line[:-1]
-                    items = []
-                elif line.startswith("-") and current_key:
-                    items.append(line[1:].strip())
-                elif current_key:
-                    parsed_fallback[current_key] = line
-                    current_key = None
-
-            if current_key and items:
-                parsed_fallback[current_key] = items
-
-            summary_data = normalize_summary_data(parsed_fallback)
+                summary_data = normalize_summary_data(parsed_fallback)
 
     try:
         memory_prompt = f"""
