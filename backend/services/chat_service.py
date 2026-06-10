@@ -12,6 +12,8 @@ from core.security import verify_access_token
 from core.crypto import encrypt_content
 from routers.counseling import close_session_with_summary
 from services.audit_service import log_sensitive
+from services.crisis_detector import detect_crisis
+from services.crisis_response import get_crisis_response_message, save_crisis_event
 
 load_dotenv()
 
@@ -177,6 +179,52 @@ async def process_chat(
         system_content = GENERAL_PROMPT
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
+
+    # 4.5. 위기 감지
+    crisis_result = detect_crisis(message)
+    print(f"=== CRISIS CHECK: detected={crisis_result.detected}, severity={crisis_result.severity}, keyword={crisis_result.matched_keyword} ===")
+
+    if crisis_result.detected:
+        reply = get_crisis_response_message(crisis_result.severity)
+
+        ciphertext, key_id = encrypt_content(message)
+        user_msg = Conversation(
+            session_id=counseling_session.id,
+            user_id=uuid.UUID(current_user["user_id"]),
+            role="user",
+            message_type="text",
+            encrypted_content=ciphertext,
+            encryption_key_id=key_id,
+            crisis_score=0.0,
+        )
+        db_sensitive.add(user_msg)
+
+        ciphertext, key_id = encrypt_content(reply)
+        ai_msg = Conversation(
+            session_id=counseling_session.id,
+            user_id=uuid.UUID(current_user["user_id"]),
+            role="assistant",
+            message_type="text",
+            encrypted_content=ciphertext,
+            encryption_key_id=key_id,
+        )
+        db_sensitive.add(ai_msg)
+        await db_sensitive.flush()
+
+        await save_crisis_event(
+            db=db_sensitive,
+            user_id=current_user["user_id"],
+            conversation_id=str(user_msg.id),
+            result=crisis_result,
+        )
+
+        await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", user_msg.id)
+        await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", ai_msg.id)
+
+        await db_sensitive.commit()
+        await db_audit.commit()
+
+        return reply  
 
     # 5. Groq 응답 요청
     print("=== PROMPT 사용 ===")
