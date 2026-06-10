@@ -114,6 +114,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         normalized["suicidal_mentioned"] = bool(data.get("suicidal_mentioned", False))
         normalized["core_topics"] = normalize_list(data.get("core_topics"))
         normalized["next_session_notes"] = data.get("next_session_notes") or ""
+        normalized["important_memory"] = normalize_list(data.get("important_memory"))
 
         prompt_adjustment = data.get("prompt_adjustment")
         if isinstance(prompt_adjustment, dict):
@@ -122,30 +123,6 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
             normalized["prompt_adjustment"] = normalize_list(prompt_adjustment)
 
         return normalized
-
-    def parse_memory_items(text_value: str) -> list[str]:
-        items = []
-
-        for line in (text_value or "").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-
-            if line.startswith("-"):
-                item = line[1:].strip()
-            elif len(line) >= 3 and line[0].isdigit() and line[1] in [".", ")"]:
-                item = line[2:].strip()
-            else:
-                continue
-
-            if item:
-                items.append(item)
-
-        if items:
-            return items[:3]
-
-        fallback = (text_value or "").strip()
-        return [fallback] if fallback else []
 
     messages_result = await db_sensitive.execute(
         select(Conversation).where(
@@ -208,37 +185,6 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
 
             summary_data = normalize_summary_data(parsed_fallback)
 
-    try:
-        memory_prompt = f"""
-상담 내용을 읽고 사용자가 다음 상담에서 기억해주기를 기대할 만한 중요한 사건만 추출하세요.
-
-규칙:
-- 감정 상태는 제외
-- 구체적인 사건만 추출
-- 최대 3개
-- 반드시 목록 형태로만 출력
-
-상담 내용:
-{transcript}
-"""
-
-        memory_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "user", "content": memory_prompt}
-            ]
-        )
-
-        memory_text = memory_response.choices[0].message.content
-        important_memory = parse_memory_items(memory_text)
-
-        print("=== IMPORTANT MEMORY ===")
-        print(important_memory)
-
-    except Exception as e:
-        print("=== IMPORTANT MEMORY FAILED ===")
-        print(str(e))
-        important_memory = []
 
     try:
         risk_prompt = f"""
@@ -290,7 +236,7 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
         core_topics=summary_data.get("core_topics", []),
         prompt_adjustment=summary_data.get("prompt_adjustment", []),
         next_session_notes=summary_data.get("next_session_notes", ""),
-        important_memory=important_memory,
+        important_memory=summary_data.get("important_memory", []),
     )
 
     db_sensitive.add(new_summary)

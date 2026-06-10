@@ -135,6 +135,7 @@ async def process_chat(
                 "core_topics": recent_summary.core_topics,
                 "next_session_notes": recent_summary.next_session_notes,
                 "prompt_adjustment": recent_summary.prompt_adjustment,
+                "important_memory": recent_summary.important_memory,  
             },
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
@@ -155,6 +156,8 @@ async def process_chat(
         agent_result = json.loads(raw)
         system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
         SESSION_PROMPT_CACHE[cache_key] = system_content
+        print("=== system_prompt ===") # Agent가 생성한 system_prompt 내용
+        print(agent_result["system_prompt"])
 
     else:
         # 첫 대화: general_prompt 사용
@@ -164,7 +167,7 @@ async def process_chat(
 
     # 5. Groq 응답 요청
     print("=== PROMPT 사용 ===")
-    print(f"=== {system_content} ===")
+    print(f"=== {system_content} ===") #최종 사용된 전체 프롬프트
     print("===================")
     messages_to_send = (
         [{"role": "system", "content": system_content},
@@ -181,7 +184,7 @@ async def process_chat(
     )
     reply = response.choices[0].message.content
 
-    print("=== REPLY CHECK ===", reply)
+    print("=== REPLY CHECK ===", reply) #외국어 감지 필터 들어가기 전
     
 
     # 6. 외국어 감지 시 재요청
