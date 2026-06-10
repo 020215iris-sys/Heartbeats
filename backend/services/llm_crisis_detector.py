@@ -7,9 +7,14 @@ Groq Tool Use(Function Calling) 기반 위기 감지 모듈.
 
 import json
 import os
-from groq import Groq
+from openai import OpenAI
+from services.crisis_detector import CrisisDetectionResult
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",
+)
 
 # 카테고리 → severity 매핑
 CATEGORY_SEVERITY_MAP = {
@@ -115,22 +120,20 @@ def detect_crisis_llm(message: str) -> dict:
         tool_call = response.choices[0].message.tool_calls[0]
         args = json.loads(tool_call.function.arguments)
 
-        return {
-            "is_crisis":        args.get("is_crisis", False),
-            "severity":         args.get("severity", "none"),
-            "crisis_score":     float(args.get("crisis_score", 0.0)),
-            "matched_category": args.get("matched_category", "none"),
-            "reason":           args.get("reason", ""),
-            "source":           "llm",
-        }
+        return CrisisDetectionResult(
+            detected=args.get("is_crisis", False),
+            severity=args.get("severity", "none"),
+            crisis_score=float(args.get("crisis_score", 0.0)),
+            matched_keyword=args.get("matched_category", "none"),  # matched_keyword 필드에 category 담기
+            category=args.get("matched_category", "none"),
+        )
 
     except Exception as e:
         # 감지 실패 시 안전하게 none 반환 (서비스 중단 방지)
-        return {
-            "is_crisis":        False,
-            "severity":         "none",
-            "crisis_score":     0.0,
-            "matched_category": "none",
-            "reason":           f"LLM 감지 오류: {str(e)}",
-            "source":           "llm_error",
-        }
+        return CrisisDetectionResult(
+            detected=False,
+            severity=None,
+            crisis_score=0.0,
+            matched_keyword=None,
+            category=None,
+        )
