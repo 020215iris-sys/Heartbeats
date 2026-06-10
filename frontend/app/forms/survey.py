@@ -8,8 +8,8 @@ FlaskForm 서브클래스를 동적으로 생성한다.
 """
 
 from flask_wtf import FlaskForm
-from wtforms import RadioField
-from wtforms.validators import InputRequired
+from wtforms import RadioField, IntegerRangeField
+from wtforms.validators import InputRequired, NumberRange
 
 
 def build_survey_form(instrument: dict) -> type[FlaskForm]:
@@ -32,27 +32,33 @@ def build_survey_form(instrument: dict) -> type[FlaskForm]:
     # 클래스의 attribute로 들어갈 필드들을 dict에 모음
     fields = {}
 
+    scales = instrument["scales"]
     for i, question in enumerate(instrument["questions"]):
         field_name = f"q{i + 1}"  # q1, q2, q3, ...
+        scale = scales[question.get("scale", "likert4")]
 
-        fields[field_name] = RadioField(
-            # 라벨로 문항 텍스트 사용.
-            # 사실 우리 템플릿에선 instrument["questions"][i]["text"]를
-            # 직접 쓰니까 field.label은 거의 안 쓰임. 그래도 접근성·디버깅에 유용
-            question["text"],
-
-            # 선택지는 instrument의 choices를 그대로 사용.
-            # [(1, "점수1"), (2, "점수2"), ...] 형태
-            choices=instrument["choices"],
-
-            # 응답 누락 시 에러 메시지
-            validators=[InputRequired(message="응답을 선택해주세요")],
-
-            # ⚠️ 중요: 폼 제출 시 문자열로 오는 값을 int로 변환.
-            # 이게 없으면 sum() 할 때 문자열을 더하려 해서 TypeError.
-            # (또는 "1"+"2"="12" 식으로 잘못 합쳐짐)
-            coerce=int,
-        )
+        if scale["kind"] == "radio":
+            fields[field_name] = RadioField(
+                question["text"],
+                choices=scale["choices"],
+                validators=[InputRequired(message="응답을 선택해주세요")],
+                coerce=int,
+            )
+        elif scale["kind"] == "nrs":
+            # IntegerRangeField는 이미 int 반환 → coerce 불필요
+            fields[field_name] = IntegerRangeField(
+                question["text"],
+                default=scale.get("default", scale["min"]),
+                validators=[
+                    InputRequired(message="응답을 선택해주세요"),
+                    NumberRange(
+                        min=scale["min"], max=scale["max"],
+                        message=f"{scale['min']}~{scale['max']} 사이로 선택해주세요",
+                    ),
+                ],
+            )
+        else:
+            raise ValueError(f"알 수 없는 척도 kind: {scale['kind']}")
 
     # type()로 클래스 동적 생성.
     # 매개변수: (클래스명, 부모클래스 튜플, 속성 dict)
