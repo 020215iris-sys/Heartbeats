@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime, timezone
-from services.crisis_detector import CrisisDetectionResult
 
 # -----------------------------------------------------------------------
 # 안내 문구 정의
@@ -41,10 +40,10 @@ def get_crisis_response_message(severity: str) -> str:
 # DB 세션은 호출하는 쪽(라우터 or llm.py)에서 주입
 # -----------------------------------------------------------------------
 async def save_crisis_event(
-    db,                          # AsyncSession (Sensitive DB)
+    db,
     user_id: str,
     conversation_id: str,
-    result: CrisisDetectionResult,
+    severity: str,
 ) -> None:
     """
     crisis_events 테이블에 위기 이벤트를 저장한다.
@@ -82,8 +81,8 @@ async def save_crisis_event(
         "id":                str(uuid.uuid4()),
         "user_id":           user_id,
         "conversation_id":   conversation_id,
-        "crisis_score":      result.crisis_score,
-        "severity":          result.severity,
+        "crisis_score":      1.0,
+        "severity":          severity,
         "action_taken":      "안내 문구 출력",
         "guardian_notified": False,   # 추후 보호자 알림 연동 시 변경
         "resolved":          False,
