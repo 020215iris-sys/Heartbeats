@@ -12,8 +12,8 @@ from core.security import verify_access_token
 from core.crypto import encrypt_content
 from routers.counseling import close_session_with_summary
 from services.audit_service import log_sensitive
-from services.crisis_detector import detect_crisis
-#from services.llm_crisis_detector import detect_crisis_llm as detect_crisis # --- llm 테스트용
+#from services.crisis_detector import detect_crisis
+from services.llm_crisis_detector import detect_crisis_llm as detect_crisis # --- llm 테스트용
 from services.crisis_response import get_crisis_response_message, save_crisis_event
 
 load_dotenv()
