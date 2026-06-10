@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 # keyword.json 경로: 프로젝트 루트 기준
-KEYWORD_PATH = os.path.join(os.path.dirname(__file__), "..", "keyword.json")
+KEYWORD_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "ai", "keyword.json")
 
 with open(KEYWORD_PATH, encoding="utf-8") as f:
     KEYWORDS = json.load(f)
