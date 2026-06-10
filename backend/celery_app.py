@@ -20,6 +20,9 @@ Celery 앱 초기화 (Asynchronous Task Queue)
 """
 import os
 from celery import Celery
+from dotenv import load_dotenv
+
+load_dotenv()  # backend/.env 자동 로드 (로컬 개발용)
 
 
 # ──────────────────────────────────────────
