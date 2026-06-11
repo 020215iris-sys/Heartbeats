@@ -47,7 +47,8 @@ SESSION_PROMPT_CACHE: dict[str, str] = {}
 # 외국어 감지
 # ─────────────────────────────────────────
 def contains_foreign(text: str) -> bool:
-    pattern = r"[^가-힣ᄀ-ᇿ㄰-㆏\s0-9.,!?~\-\'\"()…·]"  # 수정필요함 ★
+    # 영어 단어(3자 이상), 일본어(히라가나/카타카나), 아랍어, 키릴문자
+    pattern = r'[a-zA-Z]{3,}|[぀-ヿ؀-ۿЀ-ӿ]'
     return bool(re.search(pattern, text))
 
 
@@ -250,13 +251,14 @@ async def process_chat(
     
 
     # 6. 외국어 감지 시 재요청
-    if contains_foreign(reply):
-        foreign_system = system_content + "\n\n반드시 한글로만 응답하세요. 영어나 다른 언어를 절대 사용하지 마세요."
+    if not is_crisis and contains_foreign(reply):
+        reinforced = system_content + "\n\n모든 응답은 반드시 한글로만 작성한다. 영어를 포함한 외국어 사용 금지."
+        SESSION_PROMPT_CACHE[cache_key] = reinforced  # 강화된 언어 규칙 캐시 저장
         messages_foreign = (
-            [{"role": "system", "content": foreign_system},
+            [{"role": "system", "content": reinforced},
              {"role": "user", "content": message}]
             if use_summary else
-            [{"role": "system", "content": foreign_system},
+            [{"role": "system", "content": reinforced},
              *history,
              {"role": "user", "content": message}]
         )
