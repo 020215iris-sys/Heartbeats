@@ -280,6 +280,7 @@ async def process_chat(
             messages=messages_foreign
         )
         reply = response.choices[0].message.content
+        print("=== REPLY CHECK (재요청 후) ===", reply)
         if contains_foreign(reply):
             reply = random.choice(FOREIGN_FALLBACK_REPLIES)
 
