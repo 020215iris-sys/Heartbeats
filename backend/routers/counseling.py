@@ -336,7 +336,7 @@ async def get_my_sessions(
 # ==========================================
 class StartSessionRequest(BaseModel):
     classification_id: Optional[str] = None
-    persona_type: Optional[str] = "empathy"
+    persona_type: Optional[dict] = None  # 변경: str → dict (또는 None 시 서버 디폴트)
 
 
 @router.post("/sessions")
