@@ -15,7 +15,6 @@ from routers.counseling import close_session_with_summary
 from services.audit_service import log_sensitive
 from services.crisis_response import get_crisis_response_message,save_crisis_event
 from services.crisis_tool_schema import CRISIS_TOOL,CRISIS_TOOL_INSTRUCTION
-from services.personas import build_persona_payload
 
 load_dotenv()
 
@@ -94,7 +93,7 @@ async def process_chat(
         counseling_session = CounselingSession(
             id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
-            persona_type=build_persona_payload(),
+            persona_type="empathy",
             is_active=True
         )
         db_sensitive.add(counseling_session)
@@ -120,7 +119,7 @@ async def process_chat(
             await db_sensitive.flush()
             counseling_session = CounselingSession(
                 user_id=uuid.UUID(current_user["user_id"]),
-                persona_type=build_persona_payload(),
+                persona_type="empathy",
                 is_active=True
             )
             db_sensitive.add(counseling_session)

@@ -133,7 +133,7 @@ const doc = new Document({
 
       heading1("2. 상담 (routers/counseling.py)"),
       heading2("2-1. POST /counseling/sessions — 상담 세션 시작 ★"),
-      apiTable("POST", "/counseling/sessions", "Authorization: Bearer {token}", "상담 세션을 생성하고 session_id를 발급합니다. 채팅(/chat) 호출 전에 반드시 먼저 실행해야 합니다.", "classification_id (str UUID, 선택), persona_type (str 또는 object, 선택; code: empathy | coaching | neutral)", "session_id (UUID), user_id, persona_type (object), started_at, is_active: true"),
+      apiTable("POST", "/counseling/sessions", "Authorization: Bearer {token}", "상담 세션을 생성하고 session_id를 발급합니다. 채팅(/chat) 호출 전에 반드시 먼저 실행해야 합니다.", "classification_id (str UUID, 선택), persona_type (str 선택: empathy | coaching | neutral, 기본 empathy)", "session_id (UUID), user_id, persona_type, started_at, is_active: true"),
       gap(),
       heading2("2-2. GET /counseling/sessions/{session_id} — 세션 조회"),
       apiTable("GET", "/counseling/sessions/{session_id}", "Authorization: Bearer {token}", "session_id로 상담 세션 정보를 조회합니다. 자신의 세션만 가능.", "없음 (Path: session_id)", "session_id, user_id, classification_id, persona_type, started_at, ended_at, is_active"),

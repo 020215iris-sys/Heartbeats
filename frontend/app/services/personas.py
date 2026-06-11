@@ -1,7 +1,7 @@
 """
 상담사 페르소나 정의.
 
-COUNSELING_SESSIONS.persona_type JSON 객체의 code 값과 동기.
+ERD의 COUNSELING_SESSIONS.persona_type ("empathy/coaching/neutral") 와 동기.
 백엔드가 페르소나 코드로 LLM 프롬프트 전략을 분기할 때 같은 식별자 공유.
 
 확장 시:
@@ -46,6 +46,6 @@ def get_persona(code: str | None = None) -> dict:
     """
     페르소나 dict 반환. code가 None이거나 없는 코드면 기본값.
     """
-    if not isinstance(code, str) or code not in PERSONAS:
+    if not code or code not in PERSONAS:
         code = DEFAULT_PERSONA_CODE
     return PERSONAS[code]
