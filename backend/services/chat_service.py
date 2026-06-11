@@ -1,5 +1,6 @@
 import os
 import re
+import random
 import uuid
 import json
 from openai import OpenAI
@@ -41,6 +42,17 @@ with open(GENERAL_PROMPT_PATH, "r", encoding="utf-8") as f:
 # 세션별 system_prompt 캐시
 # ─────────────────────────────────────────
 SESSION_PROMPT_CACHE: dict[str, str] = {}
+
+
+# ─────────────────────────────────────────
+# 외국어 감지 시 대체 응답 (랜덤)
+# ─────────────────────────────────────────
+FOREIGN_FALLBACK_REPLIES = [
+    "괜찮으시면 조금 다른 방향으로 이야기해볼까요?",
+    "그렇군요. 좀 더 자세히 얘기해주실 수 있으신가요?",
+    "그러셨군요... 잠시 그 마음에 좀 더 머물러봐도 괜찮을까요?",
+    "죄송해요. 그 부분에 대한 건 답변이 어려워요.",
+]
 
 
 # ─────────────────────────────────────────
@@ -269,7 +281,9 @@ async def process_chat(
         )
         reply = response.choices[0].message.content
         if contains_foreign(reply):
-            reply = "죄송해요. 그 부분에 대한 건 답변이 어려워요."
+            reply = random.choice(FOREIGN_FALLBACK_REPLIES)
+
+    print("=== REPLY CHECK (필터 후) ===", reply)
 
     # 7. 사용자/AI 메시지 저장
     ciphertext, key_id = encrypt_content(message)
