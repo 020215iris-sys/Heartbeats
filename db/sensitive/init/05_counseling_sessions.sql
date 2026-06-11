@@ -5,7 +5,9 @@ CREATE TABLE counseling_sessions (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id           UUID        NOT NULL,          -- 논리 FK → general.users.id
     classification_id UUID        REFERENCES classifications(id),  -- NOT NULL 제거
-    persona_type      VARCHAR(30),                   -- 상담사 페르소나
+    -- 변경: VARCHAR(30) → JSONB
+    -- 형식: {"code": "empathy"} 최소. ORM/API 레벨에서 name/version/params 추가 가능
+    persona_type      JSONB       NOT NULL DEFAULT '{"code": "empathy"}'::jsonb,
     started_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at          TIMESTAMPTZ,                   -- 진행 중이면 NULL
     is_active         BOOLEAN     NOT NULL DEFAULT TRUE,

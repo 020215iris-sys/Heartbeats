@@ -109,7 +109,15 @@ class CounselingSession(BaseSensitive):
     id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id           = Column(UUID(as_uuid=True), nullable=False)
     classification_id = Column(UUID(as_uuid=True), ForeignKey("classifications.id"), nullable=True)
-    persona_type      = Column(String, default="empathy")
+    # 변경: String → JSONB
+    # default를 lambda로 감싸는 이유: dict 직접 default로 두면 모든 인스턴스가
+    # 같은 dict 객체 공유 (Python mutable default 함정).
+    # 한 세션에서 dict 수정하면 다른 세션 default도 오염됨.
+    persona_type      = Column(
+        JSONB,
+        default=lambda: {"code": "empathy"},
+        nullable=False,
+    ) 
     started_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     ended_at          = Column(DateTime(timezone=True), nullable=True)
     is_active         = Column(Boolean, default=True)
