@@ -4,6 +4,8 @@ from . import api_client
 from .personas import get_persona
 
 
+
+
 def _fmt_date(iso: str) -> str:
     try:
         dt = datetime.fromisoformat((iso or "").replace("Z", "+00:00"))
@@ -14,6 +16,7 @@ def _fmt_date(iso: str) -> str:
 
 def _map_session(s: dict) -> dict:
     raw_persona = s.get("persona_type")
+
     if isinstance(raw_persona, dict):
         code = raw_persona.get("code")
         raw_name = raw_persona.get("name")
@@ -23,6 +26,7 @@ def _map_session(s: dict) -> dict:
         snapshot_name = None
 
     persona_meta = get_persona(code)
+
     return {
         "id": s.get("session_id"),
         "persona": snapshot_name or persona_meta["name"],
