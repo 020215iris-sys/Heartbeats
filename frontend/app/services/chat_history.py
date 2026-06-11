@@ -1,8 +1,7 @@
 """이전 채팅 — 백엔드(/counseling) 연동."""
 from datetime import datetime
 from . import api_client
-
-_PERSONA = {"empathy": ("다온", "🌱")}
+from .personas import get_persona
 
 
 def _fmt_date(iso: str) -> str:
@@ -14,11 +13,20 @@ def _fmt_date(iso: str) -> str:
 
 
 def _map_session(s: dict) -> dict:
-    persona, emoji = _PERSONA.get(s.get("persona_type"), ("다온", "🌱"))
+    raw_persona = s.get("persona_type")
+    if isinstance(raw_persona, dict):
+        code = raw_persona.get("code")
+        raw_name = raw_persona.get("name")
+        snapshot_name = raw_name if isinstance(raw_name, str) else None
+    else:
+        code = raw_persona
+        snapshot_name = None
+
+    persona_meta = get_persona(code)
     return {
         "id": s.get("session_id"),
-        "persona": persona,
-        "emoji": emoji,
+        "persona": snapshot_name or persona_meta["name"],
+        "emoji": persona_meta["avatar_emoji"],
         "date": _fmt_date(s.get("started_at", "")),
         "preview": s.get("preview") or "(요약 없음)",
         "msg_count": s.get("message_count", 0),
