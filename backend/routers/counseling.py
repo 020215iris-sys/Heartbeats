@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Optional
 from database import get_db_sensitive, get_db_audit
 from models import CounselingSession, Conversation, CrisisEvent, AuditLogSensitive, Summary
 from sqlalchemy.future import select
@@ -15,7 +15,7 @@ import os
 import yaml
 from core.crypto import decrypt_content
 from services.summary_service import request_summary
-from services.personas import build_persona_payload
+from personas import get_persona, DEFAULT_PERSONA_CODE
 
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
@@ -338,8 +338,7 @@ async def get_my_sessions(
 # ==========================================
 class StartSessionRequest(BaseModel):
     classification_id: Optional[str] = None
-    # 문자열을 보내던 기존 클라이언트와 JSON 객체를 보내는 새 클라이언트를 모두 지원한다.
-    persona_type: str | dict[str, Any] | None = None
+    persona_type: Optional[dict] = None  # 변경: str → dict (또는 None 시 서버 디폴트)
 
 
 @router.post("/sessions")
@@ -363,12 +362,14 @@ async def start_session(
         if old_session:
             await close_session_with_summary(old_session, db_sensitive, db_audit)
 
+        # ↓↓↓ ★ 여기 (new_session 생성 직전) ★ ↓↓↓
         # ───────── 페르소나 정규화 + 스냅샷 페이로드 빌드 ─────────
-        # 클라이언트가 안 보냈으면(None) 기본값 적용. 보냈다면 dict 안의 code만 우선 추출.
+
+        # 클라이언트가 안 보냈으면 기본값. 보냈다면 dict 안의 code만 우선 추출.
         incoming = body.persona_type or {"code": DEFAULT_PERSONA_CODE}
 
-        # personas.py에서 유효 코드 lookup.
-        # 없는 코드면 get_persona() 안에서 DEFAULT_PERSONA_CODE로 폴백 → 잘못된 코드 DB 진입 방지
+        # personas.py에서 유효 코드 lookup (없는 코드면 DEFAULT_PERSONA_CODE로 폴백)
+        # → 잘못된 코드가 DB에 들어가는 걸 방지
         persona_meta = get_persona(incoming.get("code"))
 
         # DB에는 스냅샷 저장: personas.py가 향후 바뀌어도 과거 세션이 깨지지 않음
@@ -380,12 +381,13 @@ async def start_session(
             # 사용자가 커스텀 파라미터 보낸 경우 보존 (없으면 빈 dict)
             "params": incoming.get("params") or {},
         }
+
         # ───────── 페르소나 정규화 끝 ─────────
 
         new_session = CounselingSession(
             user_id=uuid.UUID(current_user["user_id"]),
             classification_id=uuid.UUID(body.classification_id) if body.classification_id else None,
-            persona_type=persona_payload,
+            persona_type=persona_payload, # 변경: body.persona_type → persona_payload
             is_active=True
         )
         db_sensitive.add(new_session)
