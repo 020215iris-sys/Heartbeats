@@ -59,6 +59,43 @@ class GuardianConsent(BaseGeneral):
     consented_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     revoked_at     = Column(DateTime(timezone=True), nullable=True)
 
+class GuardianInvite(BaseGeneral):
+    """
+    피보호자(ward) ↔ 보호자(guardian) 연결 (초대 + 매핑 겸직 테이블).
+
+    역할 1: 보호자 가입 게이트키퍼 (status='pending')
+            ward 발급 → 보호자가 /auth/signup에서 invite_code 입력 → 가입+연결 한 트랜잭션
+    역할 2: 영구 연결 매핑 (status='accepted' AND revoked_at IS NULL)
+            보호자가 가입 후 대시보드에서 자신이 볼 수 있는 ward 목록 조회 기준
+
+    향후 분리 후보: 데이터 누적 시 guardian_links로 활성 관계 별도 테이블.
+    """
+    __tablename__ = "guardian_invites"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code             = Column(String(8), unique=True, nullable=False)
+    ward_user_id     = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    guardian_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status           = Column(String(20), nullable=False, default="pending")
+    attempt_count    = Column(Integer, nullable=False, default=0)
+    expires_at       = Column(DateTime(timezone=True), nullable=False)
+    accepted_at      = Column(DateTime(timezone=True), nullable=True)
+    revoked_at       = Column(DateTime(timezone=True), nullable=True)
+    created_at       = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 # ==========================================
 # 📕 Sensitive DB 테이블들
