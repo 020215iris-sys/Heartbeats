@@ -17,7 +17,7 @@ def request_summary(transcript):
         json={
             "transcript": transcript
         },
-        timeout=120
+        timeout=360
     )
 
     response.raise_for_status()

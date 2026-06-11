@@ -13,9 +13,8 @@ from core.security import verify_access_token
 from core.crypto import encrypt_content
 from routers.counseling import close_session_with_summary
 from services.audit_service import log_sensitive
-from services.crisis_detector import detect_crisis
-#from services.llm_crisis_detector import detect_crisis_llm as detect_crisis # --- llm 테스트용
-from services.crisis_response import get_crisis_response_message, save_crisis_event
+from services.crisis_response import get_crisis_response_message,save_crisis_event
+from services.crisis_tool_schema import CRISIS_TOOL,CRISIS_TOOL_INSTRUCTION
 
 load_dotenv()
 
@@ -175,7 +174,7 @@ async def process_chat(
                 raw = raw[4:].strip()
         agent_result = json.loads(raw)
 
-                # 추가
+        # 추가
         print("=== AGENT PARSED ===")
         print(agent_result)
 
@@ -183,8 +182,24 @@ async def process_chat(
         print("=== AGENT SYSTEM PROMPT ===")
         print(agent_result["system_prompt"])
 
+        if contains_foreign(agent_result["system_prompt"]):
+            print("=== AGENT FOREIGN DETECTED ===")
+            print(agent_result["system_prompt"])
+
+            agent_result["system_prompt"] = (
+                f"사용자 닉네임은 '{current_user.get('nickname', '사용자')}'이다. "
+                "현재 상태를 탐색하고 이전 회차 기억과 감정 반영을 우선한다. "
+                "질문은 한 번에 하나씩 제시한다. "
+                "정서적 안정화를 우선한다."
+            )
+
+        print(
+           "foreign =",
+            contains_foreign(agent_result["system_prompt"])
+        )
 
         system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
+        system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== system_prompt ===") # Agent가 생성한 system_prompt 내용
         print(agent_result["system_prompt"])
@@ -192,54 +207,10 @@ async def process_chat(
     else:
         # 첫 대화: general_prompt 사용
         system_content = GENERAL_PROMPT
+        system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
 
-    # 4.5. 위기 감지
-    crisis_result = detect_crisis(message)
-    print(f"=== CRISIS CHECK: detected={crisis_result.detected}, severity={crisis_result.severity}, keyword={crisis_result.matched_keyword} ===")
-
-    if crisis_result.detected:
-        reply = get_crisis_response_message(crisis_result.severity)
-
-        ciphertext, key_id = encrypt_content(message)
-        user_msg = Conversation(
-            session_id=counseling_session.id,
-            user_id=uuid.UUID(current_user["user_id"]),
-            role="user",
-            message_type="text",
-            encrypted_content=ciphertext,
-            encryption_key_id=key_id,
-            crisis_score=0.0,
-        )
-        db_sensitive.add(user_msg)
-
-        ciphertext, key_id = encrypt_content(reply)
-        ai_msg = Conversation(
-            session_id=counseling_session.id,
-            user_id=uuid.UUID(current_user["user_id"]),
-            role="assistant",
-            message_type="text",
-            encrypted_content=ciphertext,
-            encryption_key_id=key_id,
-        )
-        db_sensitive.add(ai_msg)
-        await db_sensitive.flush()
-
-        await save_crisis_event(
-            db=db_sensitive,
-            user_id=current_user["user_id"],
-            conversation_id=str(user_msg.id),
-            result=crisis_result,
-        )
-
-        await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", user_msg.id)
-        await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", ai_msg.id)
-
-        await db_sensitive.commit()
-        await db_audit.commit()
-
-        return reply  
 
     # 5. Groq 응답 요청
     print("=== PROMPT 사용 ===")
@@ -256,15 +227,50 @@ async def process_chat(
 
     response = groq_client.chat.completions.create(
         model="llama-3.3-70b-versatile",
-        messages=messages_to_send
+        messages=messages_to_send,
+        tools=[CRISIS_TOOL],
+        tool_choice="auto"
     )
-    reply = response.choices[0].message.content
+    message_obj = response.choices[0].message
+    is_crisis = False
+
+    print("===== TOOL CALLS =====")
+    print(message_obj.tool_calls)
+    print("======================")
+
+
+    if message_obj.tool_calls:
+        
+        is_crisis = True
+
+        args = json.loads(
+            message_obj.tool_calls[0].function.arguments
+        )
+
+        severity = args["severity"]
+        category = args["category"]
+        reason = args["reason"]
+
+        print("severity =", severity)
+        print("category =", category)
+        print("reason =", reason)
+
+        print(
+            f"=== CRISIS TOOL === "
+            f"{severity} / {category} / {reason}"
+        )
+
+        reply = get_crisis_response_message(severity)
+        
+    else:
+        reply = response.choices[0].message.content
+
 
     print("=== REPLY CHECK ===", reply) #외국어 감지 필터 들어가기 전
     
 
     # 6. 외국어 감지 시 재요청
-    if not crisis_result.detected and contains_foreign(reply):
+    if not is_crisis and contains_foreign(reply):
         reinforced = system_content + "\n\n모든 응답은 반드시 한글로만 작성한다. 영어를 포함한 외국어 사용 금지."
         SESSION_PROMPT_CACHE[cache_key] = reinforced  # 강화된 언어 규칙 캐시 저장
         messages_foreign = (
@@ -308,6 +314,18 @@ async def process_chat(
         encryption_key_id=key_id
     )
     db_sensitive.add(ai_msg)
+
+    await db_sensitive.flush()
+
+    print("conversation_id =", user_msg.id)
+
+    if is_crisis:
+        await save_crisis_event(
+            db=db_sensitive,
+            user_id=current_user["user_id"],
+            conversation_id=str(user_msg.id),
+            severity=severity,
+        )
 
     # 8. 감사 로그
     await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", user_msg.id)
