@@ -1,5 +1,6 @@
 import os
 import re
+import random
 import uuid
 import json
 from openai import OpenAI
@@ -43,10 +44,23 @@ SESSION_PROMPT_CACHE: dict[str, str] = {}
 
 
 # ─────────────────────────────────────────
+# 외국어 감지 시 대체 응답 (랜덤)
+# ─────────────────────────────────────────
+FOREIGN_FALLBACK_REPLIES = [
+    "괜찮으시면 조금 다른 방향으로 이야기해볼까요?",
+    "그렇군요. 좀 더 자세히 얘기해주실 수 있으신가요?",
+    "그러셨군요... 잠시 그 마음에 좀 더 머물러봐도 괜찮을까요?",
+    "죄송해요. 그 부분에 대한 건 답변이 어려워요.",
+]
+
+
+# ─────────────────────────────────────────
 # 외국어 감지
 # ─────────────────────────────────────────
 def contains_foreign(text: str) -> bool:
-    pattern = r"[^가-힣ᄀ-ᇿ㄰-㆏\s0-9.,!?~\-\'\"()…·]"  # 수정필요함 ★
+    # 한글·숫자·공백·기본 구두점만 허용, 나머지는 외국어로 감지
+    # (영어, 한자, 일본어, 전각문자 등 모두 차단)
+    pattern = r'[^가-힣ᄀ-ᇿ㄰-㆏0-9\s.,!?~\-\'"()…·%:/*]'
     return bool(re.search(pattern, text))
 
 
@@ -257,12 +271,13 @@ async def process_chat(
 
     # 6. 외국어 감지 시 재요청
     if not is_crisis and contains_foreign(reply):
-        foreign_system = system_content + "\n\n반드시 한글로만 응답하세요. 영어나 다른 언어를 절대 사용하지 마세요."
+        reinforced = system_content + "\n\n모든 응답은 반드시 한글로만 작성한다. 영어를 포함한 외국어 사용 금지."
+        SESSION_PROMPT_CACHE[cache_key] = reinforced  # 강화된 언어 규칙 캐시 저장
         messages_foreign = (
-            [{"role": "system", "content": foreign_system},
+            [{"role": "system", "content": reinforced},
              {"role": "user", "content": message}]
             if use_summary else
-            [{"role": "system", "content": foreign_system},
+            [{"role": "system", "content": reinforced},
              *history,
              {"role": "user", "content": message}]
         )
@@ -271,8 +286,11 @@ async def process_chat(
             messages=messages_foreign
         )
         reply = response.choices[0].message.content
+        print("=== REPLY CHECK (재요청 후) ===", reply)
         if contains_foreign(reply):
-            reply = "죄송해요. 그 부분에 대한 건 답변이 어려워요."
+            reply = random.choice(FOREIGN_FALLBACK_REPLIES)
+
+    print("=== REPLY CHECK (필터 후) ===", reply)
 
     # 7. 사용자/AI 메시지 저장
     ciphertext, key_id = encrypt_content(message)
