@@ -48,7 +48,7 @@ VALUES
   ('cccc1111-1111-1111-1111-111111111111',
    '11111111-1111-1111-1111-111111111111',
    'aaaa1111-1111-1111-1111-111111111111',
-   'warm_listener',
+   '{"code": "empathy", "name": "다온", "version": "v1", "params": {}}'::jsonb,
    now() - interval '1 hour',
    now() - interval '30 minutes',
    FALSE);  -- 종료된 세션이므로 is_active=FALSE
