@@ -52,6 +52,7 @@ def signup(
     phone_number: str,
     gender: str | None = None,
     birth_date: str | None = None,
+    invite_code: str | None = None,
 ) -> dict:
     """
     가입 성공 시 payload 반환.
@@ -71,13 +72,14 @@ def signup(
                 "phone_number": phone_number,
                 "gender": gender,
                 "birth_date": birth_date,
+                "invite_code": invite_code,
             },
             timeout=5,
         )
     except requests.RequestException as exc:
         raise SignupError("server_error") from exc
 
-    if res.status_code == 409:
+    if res.status_code in (400, 409):
         raise SignupError(res.json().get("detail", "server_error"))
     if not res.ok:
         raise SignupError("server_error")

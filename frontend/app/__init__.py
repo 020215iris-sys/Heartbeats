@@ -16,12 +16,16 @@ def create_app(config_class: type = Config) -> Flask:
     from .routes.auth import bp as auth_bp
     from .routes.survey import bp as survey_bp
     from .routes.chat import bp as chat_bp 
+    from .routes.guardian import bp as guardian_bp
+    from .routes.dashboard import bp as dashboard_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(survey_bp, url_prefix="/survey")
     app.register_blueprint(chat_bp, url_prefix="/chat")
-    
+    app.register_blueprint(guardian_bp, url_prefix="/guardian")
+    app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
+
     @app.context_processor
     def inject_current_user():
         # 사용자 상태 판정: authenticated > guest > anonymous 우선순위
@@ -57,4 +61,18 @@ def create_app(config_class: type = Config) -> Flask:
             return {"recent_chats": get_recent_chats(limit=3)}
         return {"recent_chats": []}
     
+    @app.context_processor
+    def inject_guardian_wards():
+        # 보호자에게만 연결된 사용자 목록 주입.
+        # TODO: 백엔드 연결 시 api_client로 교체. 지금은 더미.
+        if "access_token" in session and session.get("role") == "guardian":
+            return {"guardian_wards": [
+                {"id": "dummy-1", "nickname": "홍길동"},
+                {"id": "dummy-2", "nickname": "김영희"},
+            ]}
+        return {"guardian_wards": []}
+    
     return app
+
+
+    

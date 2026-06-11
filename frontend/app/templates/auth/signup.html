@@ -46,6 +46,20 @@
       {% endfor %}
     </div>
 
+    {# 보호자 초대 코드 — 보호자 선택 시에만 노출 #}
+    <div id="inviteCodeWrap" class="flex flex-col mb-4 {% if form.role.data != 'guardian' %}hidden{% endif %}">
+      {{ form.invite_code.label(class="text-sm font-medium text-slate-700") }}
+      <span class="text-red-500"> * 필수</span>
+      {{ form.invite_code(class="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm",
+      inputmode="numeric", maxlength="8", placeholder="8자리 숫자") }}
+      {% if form.invite_code.description %}
+      <p class="mt-1 text-xs text-slate-500">{{ form.invite_code.description }}</p>
+      {% endif %}
+      {% for err in form.invite_code.errors %}
+      <p class="mt-1 text-xs text-red-600">{{ err }}</p>
+      {% endfor %}
+    </div>
+
     {# ====== 이메일 필드 ====== #}
     <div>
 
@@ -264,6 +278,16 @@
           field.addEventListener('input', () => err.style.display = 'none');
         }
       });
+      (function () {
+        const wrap = document.getElementById("inviteCodeWrap");
+        function syncInvite() {
+          if (!wrap) return;
+          const r = document.querySelector('input[name="role"]:checked');
+          wrap.classList.toggle("hidden", !(r && r.value === "guardian"));
+        }
+        document.querySelectorAll('input[name="role"]').forEach(el => el.addEventListener("change", syncInvite));
+        syncInvite();
+      })();
     </script>
 
 

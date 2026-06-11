@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}내 대시보드 · 하트비트{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-8">
+
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-slate-900">내 대시보드</h1>
+        <p class="mt-2 text-sm text-slate-600">{{ current_user.nickname or current_user.email }} 님, 안녕하세요.</p>
+    </div>
+
+    {# 보호자 연결 #}
+    <section class="mb-6">
+        <h2 class="mb-3 text-sm font-semibold text-slate-700">보호자 연결</h2>
+        <div class="rounded-xl border border-slate-200 bg-white p-5">
+            <p class="text-sm text-slate-600">
+                보호자가 될 분에게 초대 코드를 전달하면, 보호자가 내 상태를 함께 살펴볼 수 있어요.
+            </p>
+            <button type="button" onclick="openInviteModal()"
+                class="mt-4 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">
+                보호자 초대 코드 발급
+            </button>
+        </div>
+    </section>
+
+    {# 최근 검진 결과 (자리만) #}
+    <section class="mb-6">
+        <h2 class="mb-3 text-sm font-semibold text-slate-700">최근 검진 결과</h2>
+        <div class="rounded-xl border border-slate-200 bg-white p-6 text-center">
+            <p class="text-sm text-slate-500">아직 검진 기록이 없어요.</p>
+            <a href="{{ url_for('survey.initial') }}"
+                class="mt-2 inline-block text-xs font-medium text-brand-600 hover:text-brand-700">자가 검진 하러 가기 →</a>
+        </div>
+    </section>
+
+    {# ===== 초대 모달 ===== #}
+    <div id="inviteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+        <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">보호자 초대 코드 발급</h2>
+                    <p class="mt-1 text-xs text-slate-500">초대 문구를 복사해 이메일·메신저로 공유해 주세요.</p>
+                </div>
+                <button type="button" onclick="closeInviteModal()"
+                    class="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div class="mt-5">
+                <div class="text-xs font-medium text-slate-500">초대 코드</div>
+                <div id="inviteCode"
+                    class="mt-1 rounded-xl border border-slate-200 bg-slate-100 py-4 text-center text-3xl font-bold tracking-widest text-slate-900">
+                    --------
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <div class="text-xs font-medium text-slate-500">초대 문구</div>
+                <textarea id="inviteMessage" rows="5" readonly
+                    class="mt-1 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"></textarea>
+            </div>
+
+            <div class="mt-5 flex justify-end">
+                <button id="copyBtn" type="button" onclick="copyInvite()"
+                    class="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition">
+                    초대 문구 복사
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const nickname = {{ (current_user.nickname or current_user.email or "사용자") | tojson }};
+
+    function genCode() {
+        let s = "";
+        for (let i = 0; i < 8; i++) s += Math.floor(Math.random() * 10);
+        return s;  // 더미 — 백엔드 발급 붙으면 교체
+    }
+    function openInviteModal() {
+        const code = genCode();
+        document.getElementById("inviteCode").textContent = code;
+        document.getElementById("inviteMessage").value =
+            `${nickname}님이 하트비트 보호자로 초대했어요!\n\n초대코드: ${code}\n\n보호자로 로그인한 뒤 [보호자 대시보드]에서 이 코드를 입력하면 연결됩니다.`;
+        const m = document.getElementById("inviteModal");
+        m.classList.remove("hidden"); m.classList.add("flex");
+    }
+    function closeInviteModal() {
+        const m = document.getElementById("inviteModal");
+        m.classList.add("hidden"); m.classList.remove("flex");
+    }
+    async function copyInvite() {
+        const text = document.getElementById("inviteMessage").value;
+        const btn = document.getElementById("copyBtn");
+        try { await navigator.clipboard.writeText(text); }
+        catch (e) {
+            const ta = document.getElementById("inviteMessage");
+            ta.removeAttribute("readonly"); ta.select();
+            document.execCommand("copy"); ta.setAttribute("readonly", "");
+        }
+        const old = btn.textContent;
+        btn.textContent = "복사됨 ✓";
+        setTimeout(() => (btn.textContent = old), 1500);
+    }
+</script>
+{% endblock %}

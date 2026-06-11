@@ -51,6 +51,7 @@ def signup():
                 phone_number=form.phone_number.data,
                 gender=form.gender.data,
                 birth_date=form.birth_date.data.isoformat() if form.birth_date.data else None,
+                invite_code=form.invite_code.data or None
             )
         except SignupError as e:
             # 어떤 필드 문제인지에 따라 해당 필드 바로 아래 에러 표시.
@@ -61,6 +62,10 @@ def signup():
                 form.phone_number.errors.append("이미 사용 중인 휴대폰 번호예요")
             elif e.code == "invalid_birth_date":
                 form.birth_date.errors.append("생년월일 형식이 올바르지 않아요")
+            elif e.code == "invite_code_required":
+                form.invite_code.errors.append("보호자 가입은 초대 코드가 필요해요")
+            elif e.code == "invalid_or_expired_code":
+                form.invite_code.errors.append("초대 코드가 올바르지 않거나 만료됐어요")
             else:
                 flash("서버 연결에 실패했어요. 잠시 후 다시 시도해주세요.", "error")
             # 폼 재렌더링으로 fallthrough

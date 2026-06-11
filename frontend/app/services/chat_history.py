@@ -14,7 +14,10 @@ def _fmt_date(iso: str) -> str:
 
 
 def _map_session(s: dict) -> dict:
-    persona, emoji = _PERSONA.get(s.get("persona_type"), ("다온", "🌱"))
+    pt = s.get("persona_type")
+    # persona_type가 JSONB로 바뀜: {"code": "empathy"} 형태. 구버전(문자열)도 방어.
+    persona_code = pt.get("code") if isinstance(pt, dict) else pt
+    persona, emoji = _PERSONA.get(persona_code, ("다온", "🌱"))
     return {
         "id": s.get("session_id"),
         "persona": persona,

@@ -6,7 +6,7 @@ load_dotenv()
 
 from database import engine_general, engine_sensitive, engine_audit
 from models import BaseGeneral, BaseSensitive, BaseAudit
-from routers import auth, counseling, survey
+from routers import auth, counseling, survey, guardian
 
 
 @asynccontextmanager
@@ -25,6 +25,7 @@ app = FastAPI(title="Heartbeats API", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(counseling.router)
 app.include_router(survey.router)
+app.include_router(guardian.router)
 
 @app.get("/")
 def root():
