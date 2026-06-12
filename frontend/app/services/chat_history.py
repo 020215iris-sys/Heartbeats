@@ -15,6 +15,7 @@ def _fmt_date(iso: str) -> str:
 
 
 def _map_session(s: dict) -> dict:
+
     raw_persona = s.get("persona_type")
 
     if isinstance(raw_persona, dict):

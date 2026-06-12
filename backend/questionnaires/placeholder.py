@@ -49,12 +49,12 @@ PLACEHOLDER = {
     # scores_for에 여러 개 적으면 한 답변이 여러 질환 점수에 동시 누적됨
     "questions": [
         {"text": "일 또는 여가 활동을 하는 데 흥미나 즐거움을 느끼지 못함.",  "scores_for": ["depression"]},
-        {"text": "기분이 가라앉거나, depression하거나, 희망이 없음.",  "scores_for": ["depression"]},
+        {"text": "기분이 가라앉거나, 우울하거나, 희망이 없음.",  "scores_for": ["depression"]},
         {"text": "잠이 들거나 계속 잠을 자는 것이 어려움, 또는 잠을 너무 많이잠.", "scores_for": ["depression"]},
         {"text": "피곤하다고 느끼거나 기운이 거의 없음.", "scores_for": ["depression"]},
         {"text": "입맛이 없거나 과식을 함.", "scores_for": ["depression"]},
-        {"text": "자신을 부정적으로 봄 - 혹은 자신이 실패자라고 느끼거나 자신또는 가족을 실망시킴.", "scores_for": ["depression"]},
-        {"text": "신문을 읽거나 텔레비전 보는 것과 같은 일에 집중하는 것이어려움.", "scores_for": ["depression"]},
+        {"text": "자신을 부정적으로 봄 혹은 자신이 실패자라고 느끼거나 자신또는 가족을 실망시킴.", "scores_for": ["depression"]},
+        {"text": "신문을 읽거나 텔레비전 보는 것과 같은 일에 집중하는 것이 어려움.", "scores_for": ["depression"]},
         {"text": "다른 사람들이 주목할 정도로 너무 느리게 움직이거나 말을 함. 또는 반대로 평상시보다 많이 움직여서, 너무 안절부절 못하거나 들떠 있음.", "scores_for": ["depression"]},
         {"text": "자신이 죽는 것이 더 낫다고 생각하거나 어떤 식으로든 자신을 해칠 것이라고 생각함.", "scores_for": ["depression"]},
 

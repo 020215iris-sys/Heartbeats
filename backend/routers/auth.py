@@ -3,7 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 import bcrypt
 from database import get_db_general, get_db_audit
-from models import User, AuditLogGeneral, Session, CounselingSession
+from models import User, AuditLogGeneral, Session, CounselingSession, GuardianInvite
+from sqlalchemy import delete
 from sqlalchemy.future import select
 from datetime import datetime, timezone, timedelta, date
 from core.security import verify_access_token, SECRET_KEY, ALGORITHM
@@ -46,6 +47,7 @@ class SignupRequest(BaseModel):
     phone_number: str
     gender: Optional[str] = None
     birth_date: Optional[date] = None
+    invite_code: Optional[str] = None 
 
 @router.post("/signup")
 async def signup(
@@ -65,6 +67,21 @@ async def signup(
     if existing_phone.scalar():
         raise HTTPException(status_code=409, detail="phone_taken")
 
+    # 보호자 가입 게이트키퍼: 유효한 초대코드(pending·미만료)로만 guardian 가입 가능
+    invite = None
+    if user_data.role == "guardian":
+        if not user_data.invite_code:
+            raise HTTPException(status_code=400, detail="invite_code_required")
+        invite = (await db_general.execute(
+            select(GuardianInvite).where(
+                GuardianInvite.code == user_data.invite_code,
+                GuardianInvite.status == "pending",
+                GuardianInvite.expires_at > datetime.now(timezone.utc),
+            )
+        )).scalar_one_or_none()
+        if invite is None:
+            raise HTTPException(status_code=400, detail="invalid_or_expired_code")
+
     try:
         hashed_pw = bcrypt.hashpw(user_data.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         new_user = User(
@@ -79,7 +96,21 @@ async def signup(
         db_general.add(new_user)
         await db_general.flush()
 
+        # 초대코드 연결 확정 (한 트랜잭션): pending → accepted + guardian 지정
+        if invite is not None:
+            invite.guardian_user_id = new_user.id
+            invite.status = "accepted"
+            invite.accepted_at = datetime.now(timezone.utc)
+            # 그 피보호자의 죽은 코드 청소 (revoked/expired만, accepted는 보존 — N:N)
+            await db_general.execute(
+                delete(GuardianInvite).where(
+                    GuardianInvite.ward_user_id == invite.ward_user_id,
+                    GuardianInvite.status.in_(["revoked", "expired"]),
+                )
+            )
+
         refresh_token = create_refresh_token()
+        
         new_session = Session(
             user_id=new_user.id,
             refresh_token=refresh_token,

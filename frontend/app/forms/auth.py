@@ -61,6 +61,20 @@ class SignupForm(FlaskForm):
             AnyOf(["user", "guardian"], message="잘못된 역할이에요"),
         ],
     )
+    # ====== 보호자 초대 코드 (보호자 가입 시 필수) ======
+    invite_code = StringField(
+        "초대 코드",
+        validators=[
+            Optional(),
+            Regexp(r"^\d{8}$", message="초대코드는 숫자 8자리예요"),
+        ],
+        description="보호자로 가입하는 경우, 피보호자에게 받은 8자리 코드를 입력하세요.",
+    )
+
+    def validate_invite_code(self, field):
+        # 보호자인데 코드가 비어 있으면 막음 (게이트키퍼)
+        if self.role.data == "guardian" and not field.data:
+            raise ValidationError("보호자 가입은 초대 코드가 필요해요")
     # ====== 아이디 (USERS.email) ======
     email = StringField(
         "이메일",
