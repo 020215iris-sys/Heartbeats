@@ -243,3 +243,20 @@ def get_session_messages(session_id: str) -> list:
     except requests.RequestException:
         pass
     return []
+
+def create_guardian_invite() -> dict | None:
+    """보호자 초대 코드 발급. POST {backend}/guardian/invite (로그인 필요)"""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    try:
+        res = requests.post(
+            f"{_base_url()}/guardian/invite",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
