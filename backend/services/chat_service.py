@@ -22,14 +22,14 @@ load_dotenv()
 # ─────────────────────────────────────────
 # Cerebras 클라이언트 (대화모델, OpenAI 호환)
 # ─────────────────────────────────────────
-# groq_client = OpenAI(
-#     api_key=os.getenv("CEREBRAS_API_KEY"),
-#     base_url="https://api.cerebras.ai/v1",
-# )
 groq_client = OpenAI(
-    api_key=os.getenv("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1",
+    api_key=os.getenv("CEREBRAS_API_KEY"),
+    base_url="https://api.cerebras.ai/v1",
 )
+# groq_client = OpenAI(
+#     api_key=os.getenv("GROQ_API_KEY"),
+#     base_url="https://api.groq.com/openai/v1",
+# )
 # ─────────────────────────────────────────
 # 프롬프트 로드
 # ─────────────────────────────────────────
@@ -164,8 +164,7 @@ async def process_chat(
         print("===== AGENT INPUT =====")
         print(json.dumps(prompt_agent_input, ensure_ascii=False, indent=2))
         agent_response = groq_client.chat.completions.create(
-            # model="llama-3.3-70b",
-            model="llama-3.3-70b-versatile",
+            model="gpt-oss-120b",
             messages=[
                 {"role": "system", "content": AGENT_PROMPT},
                 {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
@@ -231,8 +230,7 @@ async def process_chat(
     )
 
     response = groq_client.chat.completions.create(
-        # model="llama-3.3-70b",
-        model="llama-3.3-70b-versatile",
+        model="gpt-oss-120b",
         messages=messages_to_send,
         tools=[CRISIS_TOOL],
         tool_choice="auto"
@@ -288,8 +286,7 @@ async def process_chat(
              {"role": "user", "content": message}]
         )
         response = groq_client.chat.completions.create(
-            # model="llama-3.3-70b",
-            model="llama-3.3-70b-versatile",
+            model="gpt-oss-120b",
             messages=messages_foreign
         )
         reply = response.choices[0].message.content
