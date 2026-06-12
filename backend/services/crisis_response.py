@@ -39,6 +39,13 @@ def get_crisis_response_message(severity: str) -> str:
 # crisis_events DB 저장
 # DB 세션은 호출하는 쪽(라우터 or llm.py)에서 주입
 # -----------------------------------------------------------------------
+
+SEVERITY_SCORE_MAP = {
+    "critical": 1.0,
+    "high": 0.85,
+    "medium": 0.6,
+}
+
 async def save_crisis_event(
     db,
     user_id: str,
@@ -81,7 +88,7 @@ async def save_crisis_event(
         "id":                str(uuid.uuid4()),
         "user_id":           user_id,
         "conversation_id":   conversation_id,
-        "crisis_score":      1.0,
+        "crisis_score":      SEVERITY_SCORE_MAP.get(severity, 0.6),
         "severity":          severity,
         "action_taken":      "안내 문구 출력",
         "guardian_notified": False,   # 추후 보호자 알림 연동 시 변경
