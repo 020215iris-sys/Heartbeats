@@ -13,6 +13,7 @@ from core.security import verify_access_token
 from core.crypto import encrypt_content
 from routers.counseling import close_session_with_summary
 from services.personas import build_persona_payload
+from services.persona_service import build_persona_prompt
 from services.audit_service import log_sensitive
 from services.crisis_response import get_crisis_response_message,save_crisis_event
 from services.crisis_tool_schema import CRISIS_TOOL,CRISIS_TOOL_INSTRUCTION
@@ -159,6 +160,7 @@ async def process_chat(
             },
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
+            "persona_params": counseling_session.persona_type.get("params", {}),
         }
 
         print("===== AGENT INPUT =====")
@@ -214,6 +216,16 @@ async def process_chat(
         system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
+
+
+    # 패르소나 연결 - 사용자 커스텀 슬라이더 형식
+    persona_data = counseling_session.persona_type
+    if isinstance(persona_data, dict):
+        params = persona_data.get("params", {})
+        if params:
+            persona_prompt = build_persona_prompt(params)
+            if persona_prompt:
+                system_content += "\n\n" + persona_prompt
 
 
     # 5. Groq 응답 요청
