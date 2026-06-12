@@ -12,6 +12,7 @@ from models import Conversation, CounselingSession, Summary
 from core.security import verify_access_token
 from core.crypto import encrypt_content
 from routers.counseling import close_session_with_summary
+from services.personas import build_persona_payload
 from services.audit_service import log_sensitive
 from services.crisis_response import get_crisis_response_message,save_crisis_event
 from services.crisis_tool_schema import CRISIS_TOOL,CRISIS_TOOL_INSTRUCTION
@@ -21,11 +22,14 @@ load_dotenv()
 # ─────────────────────────────────────────
 # Cerebras 클라이언트 (대화모델, OpenAI 호환)
 # ─────────────────────────────────────────
+# groq_client = OpenAI(
+#     api_key=os.getenv("CEREBRAS_API_KEY"),
+#     base_url="https://api.cerebras.ai/v1",
+# )
 groq_client = OpenAI(
-    api_key=os.getenv("CEREBRAS_API_KEY"),
-    base_url="https://api.cerebras.ai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",
 )
-
 # ─────────────────────────────────────────
 # 프롬프트 로드
 # ─────────────────────────────────────────
@@ -93,7 +97,7 @@ async def process_chat(
         counseling_session = CounselingSession(
             id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
-            persona_type="empathy",
+            persona_type=build_persona_payload("empathy"),
             is_active=True
         )
         db_sensitive.add(counseling_session)
@@ -119,7 +123,7 @@ async def process_chat(
             await db_sensitive.flush()
             counseling_session = CounselingSession(
                 user_id=uuid.UUID(current_user["user_id"]),
-                persona_type="empathy",
+                persona_type=build_persona_payload("empathy"),
                 is_active=True
             )
             db_sensitive.add(counseling_session)
@@ -160,7 +164,8 @@ async def process_chat(
         print("===== AGENT INPUT =====")
         print(json.dumps(prompt_agent_input, ensure_ascii=False, indent=2))
         agent_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b",
+            # model="llama-3.3-70b",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": AGENT_PROMPT},
                 {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
@@ -226,7 +231,8 @@ async def process_chat(
     )
 
     response = groq_client.chat.completions.create(
-        model="llama-3.3-70b",
+        # model="llama-3.3-70b",
+        model="llama-3.3-70b-versatile",
         messages=messages_to_send,
         tools=[CRISIS_TOOL],
         tool_choice="auto"
@@ -282,7 +288,8 @@ async def process_chat(
              {"role": "user", "content": message}]
         )
         response = groq_client.chat.completions.create(
-            model="llama-3.3-70b",
+            # model="llama-3.3-70b",
+            model="llama-3.3-70b-versatile",
             messages=messages_foreign
         )
         reply = response.choices[0].message.content

@@ -11,11 +11,14 @@ from openai import OpenAI
 from services.crisis_detector import CrisisDetectionResult
 
 
+# client = OpenAI(
+#     api_key=os.getenv("GROQ_API_KEY"),
+#     base_url="https://api.groq.com/openai/v1",
+# )
 client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1",
 )
-
 # 카테고리 → severity 매핑
 CATEGORY_SEVERITY_MAP = {
     "self_harm":     "critical",
