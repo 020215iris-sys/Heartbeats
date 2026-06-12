@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from models import Conversation, CounselingSession, Summary
 from core.security import verify_access_token
-from core.crypto import encrypt_content
+from core.crypto import encrypt_content, decrypt_content
 from routers.counseling import close_session_with_summary
 from services.personas import build_persona_payload
 from services.persona_service import build_persona_prompt
@@ -148,15 +148,30 @@ async def process_chat(
 
     elif recent_summary:
         # 재상담: Agent가 요약 기반으로 system_prompt 생성
+        # W2 복호화: main_complaint / next_session_notes는 BYTEA → 평문으로 풀어 Agent에 전달
+        def _safe_decrypt(blob, kid):
+            try:
+                if blob is None:
+                    return ""
+                return decrypt_content(blob, kid)
+            except Exception:
+                return ""
+
         prompt_agent_input = {
             "nickname": current_user.get("nickname", "사용자"),
             "classification_results": {},
             "summary": {
-                "main_complaint": recent_summary.main_complaint,
+                "main_complaint": _safe_decrypt(
+                    recent_summary.main_complaint_encrypted,
+                    recent_summary.main_complaint_key_id,
+                ),
                 "core_topics": recent_summary.core_topics,
-                "next_session_notes": recent_summary.next_session_notes,
+                "next_session_notes": _safe_decrypt(
+                    recent_summary.next_session_notes_encrypted,
+                    recent_summary.next_session_notes_key_id,
+                ),
                 "prompt_adjustment": recent_summary.prompt_adjustment,
-                "important_memory": recent_summary.important_memory,  
+                "important_memory": recent_summary.important_memory,
             },
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
