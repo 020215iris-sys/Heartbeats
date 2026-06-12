@@ -283,7 +283,7 @@ async def process_chat(
 
 
     print("=== REPLY CHECK ===", reply) #외국어 감지 필터 들어가기 전
-    
+    print("=== REPLY CHECK - 외국어감지 전 ===", contains_foreign(reply))
 
     # 6. 외국어 감지 시 재요청
     if not is_crisis and contains_foreign(reply):
