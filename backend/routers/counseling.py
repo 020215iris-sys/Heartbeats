@@ -43,14 +43,14 @@ async def chat(
     )
     return {"reply": reply}
 
-# groq_client = OpenAI(
-#     api_key=os.getenv("CEREBRAS_API_KEY"),
-#     base_url="https://api.cerebras.ai/v1",
-# )
 groq_client = OpenAI(
-    api_key=os.getenv("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1",
+    api_key=os.getenv("CEREBRAS_API_KEY"),
+    base_url="https://api.cerebras.ai/v1",
 )
+# groq_client = OpenAI(
+#     api_key=os.getenv("GROQ_API_KEY"),
+#     base_url="https://api.groq.com/openai/v1",
+# )
 # ==========================================
 # 세션 종료 + 요약 저장 공통 함수
 # ==========================================
@@ -146,6 +146,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
 
     try:
         summary_result = request_summary(transcript)
+        print("=== SUMMARY RESULT RAW ===", summary_result)
         if isinstance(summary_result, dict):
             raw_output = summary_result.get("output", "") or ""
 
@@ -239,8 +240,7 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
 """
 
         risk_response = groq_client.chat.completions.create(
-            # model="llama-3.3-70b",
-            model="llama-3.3-70b-versatile",
+            model="gpt-oss-120b",
             messages=[
                 {"role": "user", "content": risk_prompt}
             ]
