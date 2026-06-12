@@ -71,36 +71,27 @@
 
 <script>
     const nickname = {{ (current_user.nickname or current_user.email or "사용자") | tojson }};
+    const CSRF_TOKEN = {{ csrf_token() | tojson }};
 
-    function genCode() {
-        let s = "";
-        for (let i = 0; i < 8; i++) s += Math.floor(Math.random() * 10);
-        return s;  // 더미 — 백엔드 발급 붙으면 교체
-    }
-    function openInviteModal() {
-        const code = genCode();
-        document.getElementById("inviteCode").textContent = code;
-        document.getElementById("inviteMessage").value =
-            `${nickname}님이 하트비트 보호자로 초대했어요!\n\n초대코드: ${code}\n\n보호자로 로그인한 뒤 [보호자 대시보드]에서 이 코드를 입력하면 연결됩니다.`;
+    async function openInviteModal() {
         const m = document.getElementById("inviteModal");
+        document.getElementById("inviteCode").textContent = "발급 중…";
+        document.getElementById("inviteMessage").value = "";
         m.classList.remove("hidden"); m.classList.add("flex");
-    }
-    function closeInviteModal() {
-        const m = document.getElementById("inviteModal");
-        m.classList.add("hidden"); m.classList.remove("flex");
-    }
-    async function copyInvite() {
-        const text = document.getElementById("inviteMessage").value;
-        const btn = document.getElementById("copyBtn");
-        try { await navigator.clipboard.writeText(text); }
-        catch (e) {
-            const ta = document.getElementById("inviteMessage");
-            ta.removeAttribute("readonly"); ta.select();
-            document.execCommand("copy"); ta.setAttribute("readonly", "");
+        try {
+            const res = await fetch("{{ url_for('dashboard.invite') }}", {
+                method: "POST",
+                headers: { "X-CSRFToken": CSRF_TOKEN },
+            });
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            document.getElementById("inviteCode").textContent = data.code;
+            document.getElementById("inviteMessage").value =
+                `${nickname}님이 하트비트 보호자로 초대했어요!\n\n초대코드: ${data.code}\n\n보호자 회원가입 시 이 코드를 입력하면 연결됩니다. (1시간 내)`;
+        } catch (e) {
+            document.getElementById("inviteCode").textContent = "오류";
+            document.getElementById("inviteMessage").value = "코드 발급에 실패했어요. 다시 시도해주세요.";
         }
-        const old = btn.textContent;
-        btn.textContent = "복사됨 ✓";
-        setTimeout(() => (btn.textContent = old), 1500);
     }
 </script>
 {% endblock %}
