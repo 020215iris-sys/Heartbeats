@@ -13,8 +13,10 @@ import uuid
 import json
 import os
 import yaml
-from core.crypto import decrypt_content
+from core.crypto import decrypt_content, encrypt_content
 from services.summary_service import request_summary
+from services.personas import get_persona, DEFAULT_PERSONA_CODE
+
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
 
@@ -41,11 +43,14 @@ async def chat(
     )
     return {"reply": reply}
 
+# groq_client = OpenAI(
+#     api_key=os.getenv("CEREBRAS_API_KEY"),
+#     base_url="https://api.cerebras.ai/v1",
+# )
 groq_client = OpenAI(
-    api_key=os.getenv("CEREBRAS_API_KEY"),
-    base_url="https://api.cerebras.ai/v1",
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",
 )
-
 # ==========================================
 # 세션 종료 + 요약 저장 공통 함수
 # ==========================================
@@ -151,21 +156,45 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         print("=== SUMMARY API FAILED ===")
         print(str(e))
 
+# ===== After =====
     if raw_output:
-        try:
-            
-            parsed_summary = yaml.safe_load(raw_output)
+        parsed_summary = None
+        cleaned_output = ""
+
+        # 0) 서버가 이미 dict로 파싱해서 준 경우 그대로 사용
+        if isinstance(raw_output, dict):
+            parsed_summary = raw_output
+        else:
+            cleaned_output = strip_code_block(raw_output)
+
+            # 1) JSON 우선: 첫 '{' ~ 마지막 '}' 구간만 추출
+            start = cleaned_output.find("{")
+            end = cleaned_output.rfind("}")
+            if start != -1 and end > start:
+                try:
+                    parsed_summary = json.loads(cleaned_output[start:end + 1])
+                except Exception as e:
+                    print("=== SUMMARY JSON PARSE FAILED ===")
+                    print(str(e))
+
+            # 2) JSON 실패 시 YAML
+            if not isinstance(parsed_summary, dict):
+                try:
+                    parsed_summary = yaml.safe_load(cleaned_output)
+                except Exception as e:
+                    print("=== SUMMARY YAML PARSE FAILED ===")
+                    print(str(e))
+                    parsed_summary = None
+
+        # 3) 둘 다 실패/비정상 → 기존 라인 파서 (마지막 안전망)
+        if isinstance(parsed_summary, dict):
             summary_data = normalize_summary_data(parsed_summary)
-
-        except Exception as e:
-            print("=== SUMMARY YAML PARSE FAILED ===")
-            print(str(e))
-
+        else:
             parsed_fallback = {}
             current_key = None
             items = []
 
-            for line in raw_output.splitlines():
+            for line in cleaned_output.splitlines():
                 line = line.strip()
                 if not line:
                     continue
@@ -210,7 +239,8 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
 """
 
         risk_response = groq_client.chat.completions.create(
-            model="llama-3.3-70b",
+            # model="llama-3.3-70b",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "user", "content": risk_prompt}
             ]
@@ -334,7 +364,7 @@ async def get_my_sessions(
 # ==========================================
 class StartSessionRequest(BaseModel):
     classification_id: Optional[str] = None
-    persona_type: Optional[str] = "empathy"
+    persona_type: Optional[dict] = None  # 변경: str → dict (또는 None 시 서버 디폴트)
 
 
 @router.post("/sessions")
@@ -358,10 +388,32 @@ async def start_session(
         if old_session:
             await close_session_with_summary(old_session, db_sensitive, db_audit)
 
+        # ↓↓↓ ★ 여기 (new_session 생성 직전) ★ ↓↓↓
+        # ───────── 페르소나 정규화 + 스냅샷 페이로드 빌드 ─────────
+
+        # 클라이언트가 안 보냈으면 기본값. 보냈다면 dict 안의 code만 우선 추출.
+        incoming = body.persona_type or {"code": DEFAULT_PERSONA_CODE}
+
+        # personas.py에서 유효 코드 lookup (없는 코드면 DEFAULT_PERSONA_CODE로 폴백)
+        # → 잘못된 코드가 DB에 들어가는 걸 방지
+        persona_meta = get_persona(incoming.get("code"))
+
+        # DB에는 스냅샷 저장: personas.py가 향후 바뀌어도 과거 세션이 깨지지 않음
+        # version은 personas.py 스키마 변경 시 증가 (예: avatar_image 필드 추가하면 'v2')
+        persona_payload = {
+            "code": persona_meta["code"],
+            "name": persona_meta["name"],
+            "version": "v1",
+            # 사용자가 커스텀 파라미터 보낸 경우 보존 (없으면 빈 dict)
+            "params": incoming.get("params") or {},
+        }
+
+        # ───────── 페르소나 정규화 끝 ─────────
+
         new_session = CounselingSession(
             user_id=uuid.UUID(current_user["user_id"]),
             classification_id=uuid.UUID(body.classification_id) if body.classification_id else None,
-            persona_type=body.persona_type,
+            persona_type=persona_payload, # 변경: body.persona_type → persona_payload
             is_active=True
         )
         db_sensitive.add(new_session)
@@ -468,13 +520,14 @@ async def save_message(
         if str(session.user_id) != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
 
+        ciphertext, key_id = encrypt_content(body.encrypted_content)
         new_message = Conversation(
             session_id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
             role=body.role,
             message_type=body.message_type,
-            encrypted_content=body.encrypted_content,
-            encryption_key_id="none",
+            encrypted_content=ciphertext,
+            encryption_key_id=key_id,
             crisis_score=body.crisis_score
         )
         db_sensitive.add(new_message)
