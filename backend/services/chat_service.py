@@ -285,26 +285,12 @@ async def process_chat(
     print("=== REPLY CHECK ===", reply) #외국어 감지 필터 들어가기 전
     print("=== REPLY CHECK - 외국어감지 전 ===", contains_foreign(reply))
 
-    # 6. 외국어 감지 시 재요청
+    # 6. 외국어 감지 (재생성 OFF - 테스트용)
+    #    외국어가 감지돼도 재요청/폴백 없이 그대로 내보낸다.
+    #    286번 줄 로그로 외국어 출현 여부는 계속 확인 가능.
+    #    되돌릴 때는 아래 블록을 원래 "재요청 + 폴백" 코드로 복구하면 됨.
     if not is_crisis and contains_foreign(reply):
-        reinforced = system_content + "\n\n모든 응답은 반드시 한글로만 작성한다. 영어를 포함한 외국어 사용 금지."
-        SESSION_PROMPT_CACHE[cache_key] = reinforced  # 강화된 언어 규칙 캐시 저장
-        messages_foreign = (
-            [{"role": "system", "content": reinforced},
-             {"role": "user", "content": message}]
-            if use_summary else
-            [{"role": "system", "content": reinforced},
-             *history,
-             {"role": "user", "content": message}]
-        )
-        response = groq_client.chat.completions.create(
-            model="gpt-oss-120b",
-            messages=messages_foreign
-        )
-        reply = response.choices[0].message.content
-        print("=== REPLY CHECK (재요청 후) ===", reply)
-        if contains_foreign(reply):
-            reply = random.choice(FOREIGN_FALLBACK_REPLIES)
+        pass   # 외국어 감지돼도 재요청/폴백 없이 그대로 출력
 
     print("=== REPLY CHECK (필터 후) ===", reply)
 
