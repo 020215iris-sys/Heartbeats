@@ -411,22 +411,7 @@ async def start_session(
         # ↓↓↓ ★ 여기 (new_session 생성 직전) ★ ↓↓↓
         # ───────── 페르소나 정규화 + 스냅샷 페이로드 빌드 ─────────
 
-        # 클라이언트가 안 보냈으면 기본값. 보냈다면 dict 안의 code만 우선 추출.
-        incoming = body.persona_type or {"code": DEFAULT_PERSONA_CODE}
-
-        # personas.py에서 유효 코드 lookup (없는 코드면 DEFAULT_PERSONA_CODE로 폴백)
-        # → 잘못된 코드가 DB에 들어가는 걸 방지
-        persona_meta = get_persona(incoming.get("code"))
-
-        # DB에는 스냅샷 저장: personas.py가 향후 바뀌어도 과거 세션이 깨지지 않음
-        # version은 personas.py 스키마 변경 시 증가 (예: avatar_image 필드 추가하면 'v2')
-        persona_payload = {
-            "code": persona_meta["code"],
-            "name": persona_meta["name"],
-            "version": "v1",
-            # 사용자가 커스텀 파라미터 보낸 경우 보존 (없으면 빈 dict)
-            "params": incoming.get("params") or {},
-        }
+        persona_payload = normalize_persona(body.persona_type)
 
         # ───────── 페르소나 정규화 끝 ─────────
 

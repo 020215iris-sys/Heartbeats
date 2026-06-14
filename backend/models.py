@@ -6,6 +6,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import declarative_base
+from services.personas import DEFAULT_PERSONA
 
 # ==========================================
 # Base 3개 분리 (DB별로 따로 관리)
@@ -153,7 +154,7 @@ class CounselingSession(BaseSensitive):
     # 한 세션에서 dict 수정하면 다른 세션 default도 오염됨.
     persona_type      = Column(
         JSONB,
-        default=lambda: {"code": "empathy"},
+        default=lambda: dict(DEFAULT_PERSONA),
         nullable=False,
     ) 
     started_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
