@@ -20,6 +20,7 @@ Celery 앱 초기화 (Asynchronous Task Queue)
 """
 import os
 from celery import Celery
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()  # backend/.env 자동 로드 (로컬 개발용)
@@ -79,3 +80,29 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
 
 )
+
+
+# ──────────────────────────────────────────
+# 4. Beat 스케줄 — 자동삭제·익명화 정기 실행
+# ──────────────────────────────────────────
+# 매일 새벽 3시 (KST) 4개 태스크 순차 실행.
+# 15분 간격으로 배치 — 같은 시점 락 충돌 방지 + 모니터링 용이.
+# 정책 상수는 tasks/cleanup.py 상단 참조.
+celery_app.conf.beat_schedule = {
+    "cleanup-conversations-daily": {
+        "task": "tasks.cleanup.soft_delete_old_conversations",
+        "schedule": crontab(hour=3, minute=0),
+    },
+    "cleanup-summaries-daily": {
+        "task": "tasks.cleanup.soft_delete_old_summaries",
+        "schedule": crontab(hour=3, minute=15),
+    },
+    "cleanup-classifications-daily": {
+        "task": "tasks.cleanup.soft_delete_old_classifications",
+        "schedule": crontab(hour=3, minute=30),
+    },
+    "anonymize-sessions-daily": {
+        "task": "tasks.cleanup.anonymize_old_counseling_sessions",
+        "schedule": crontab(hour=3, minute=45),
+    },
+}
