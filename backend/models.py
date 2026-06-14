@@ -195,6 +195,7 @@ class Summary(BaseSensitive):
     core_topics        = Column(JSONB, nullable=True)        # 키워드 배열, 평문 유지
     prompt_adjustment  = Column(JSONB, nullable=True)        # 태그 배열, 평문 유지
     important_memory   = Column(JSONB, nullable=True)        # 장기 사실, 평문 유지 (향후 검토)
+
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

@@ -15,7 +15,7 @@ import os
 import yaml
 from core.crypto import decrypt_content, encrypt_content
 from services.summary_service import request_summary
-from services.personas import get_persona, DEFAULT_PERSONA_CODE
+from services.personas import normalize_persona, DEFAULT_PERSONA
 
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
@@ -24,6 +24,7 @@ class ChatMessage(BaseModel):
     message: str
     session_id: str
     history: list[dict] = []
+    persona: Optional[dict] = None
 
 @router.post("/chat")
 async def chat(
@@ -37,6 +38,7 @@ async def chat(
         message=body.message,
         session_id=body.session_id,
         history=body.history,
+        persona=body.persona,
         token=authorization,
         db_sensitive=db_sensitive,
         db_audit=db_audit,

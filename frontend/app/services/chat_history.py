@@ -21,17 +21,18 @@ def _map_session(s: dict) -> dict:
     if isinstance(raw_persona, dict):
         code = raw_persona.get("code")
         raw_name = raw_persona.get("name")
-        snapshot_name = raw_name if isinstance(raw_name, str) else None
+        raw_emoji = raw_persona.get("avatar_emoji")
     else:
         code = raw_persona
-        snapshot_name = None
+        raw_name = None
+        raw_emoji = None
 
     persona_meta = get_persona(code)
 
     return {
         "id": s.get("session_id"),
-        "persona": snapshot_name or persona_meta["name"],
-        "emoji": persona_meta["avatar_emoji"],
+        "persona": raw_name or persona_meta["name"],
+        "emoji": raw_emoji or persona_meta["avatar_emoji"],
         "date": _fmt_date(s.get("started_at", "")),
         "preview": s.get("preview") or "(요약 없음)",
         "msg_count": s.get("message_count", 0),

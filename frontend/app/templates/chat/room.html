@@ -27,7 +27,7 @@
     <div class="flex items-center gap-3">
 
       {# 아바타. 지금은 이모지 + 색 배경. 일러스트 생기면 <img>로 교체 #}
-      <div class="flex-none w-12 h-12 rounded-full bg-{{ persona.accent_color }}-100
+      <div class="flex-none w-12 h-12 rounded-full bg-brand-100
                   flex items-center justify-center text-2xl">
         {{ persona.avatar_emoji }}
       </div>
@@ -35,7 +35,8 @@
       {# 이름·태그라인·상태 #}
       <div class="flex-1 min-w-0">
         <div class="font-semibold text-slate-900">{{ persona.name }}</div>
-        <div class="text-xs text-slate-500">{{ persona.tagline }}</div>
+        {# tagline은 v1 프리셋 전용이었음 → 현재 말투 설정을 노출 #}
+        <div class="text-xs text-slate-500">{{ persona.talk_type }} · 맞춤 상담사</div>
 
         {# 상태 점 — animate-ping으로 살짝 펄스, "살아 있다" 느낌 #}
         <div class="mt-0.5 flex items-center gap-1.5 text-xs text-slate-600">
@@ -51,9 +52,10 @@
       {# 대화 초기화 — POST + CSRF 필요해서 작은 form으로 감쌈 #}
       <form method="POST" action="{{ url_for('chat.clear') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" onclick="return confirm('지금까지의 대화가 모두 사라져요. 계속할까요?')"
+        {# 페르소나 설정 팝업 열기. 대화 초기화 버튼은 팝업 하단으로 이동 #}
+        <button type="button" onclick="openPersonaModal()" aria-haspopup="dialog" aria-controls="persona-modal"
           class="text-xs text-slate-400 hover:text-slate-700 px-2 py-1">
-          초기화
+          ⚙️ 설정
         </button>
       </form>
     </div>
@@ -63,7 +65,8 @@
   <div id="messages" class="px-4 py-3 sm:py-4 space-y-2 min-h-[50vh]">
 
     {% for msg in messages %}
-    {% set msg_time = msg.timestamp if msg.timestamp is defined else (msg.created_at if msg.created_at is defined else None) %}
+    {% set msg_time = msg.timestamp if msg.timestamp is defined else (msg.created_at if msg.created_at is defined else
+    None) %}
 
     {% if msg.role == 'assistant' %}
     {# AI 메시지 #}
@@ -82,9 +85,9 @@
           {% if msg_time %}
           <div class="mt-1 pl-1 text-[11px] leading-none text-slate-400">
             {% if msg_time.strftime is defined %}
-              {{ msg_time.strftime('%H:%M') }}
+            {{ msg_time.strftime('%H:%M') }}
             {% else %}
-              {{ msg_time }}
+            {{ msg_time }}
             {% endif %}
           </div>
           {% endif %}
@@ -102,9 +105,9 @@
         {% if msg_time %}
         <div class="mt-1 pr-1 text-right text-[11px] leading-none text-slate-400">
           {% if msg_time.strftime is defined %}
-            {{ msg_time.strftime('%H:%M') }}
+          {{ msg_time.strftime('%H:%M') }}
           {% else %}
-            {{ msg_time }}
+          {{ msg_time }}
           {% endif %}
         </div>
         {% endif %}
@@ -234,6 +237,94 @@
 </script>
 {% endif %}
 
+{# ============ 페르소나 설정 팝업 ============
+헤더 ⚙️ 버튼으로 열림 (기본 hidden).
+저장 → fetch POST /chat/persona → 성공 시 새로고침으로 헤더·인사말 일괄 갱신.
+(메시지는 서버 세션에 있으므로 새로고침해도 안 사라짐)
+접근성: role="dialog"+aria-modal, 모든 입력에 label 연결,
+슬라이더는 키보드 화살표로 조작 가능, ESC·배경클릭 닫기 ============ #}
+<div id="persona-modal" role="dialog" aria-modal="true" aria-labelledby="persona-modal-title"
+  class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4">
+  <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm px-6 py-6 max-h-[90vh] overflow-y-auto">
+
+    <button type="button" onclick="closePersonaModal()" aria-label="닫기"
+      class="absolute top-3 right-4 text-slate-400 hover:text-slate-600 text-xl">✕</button>
+
+    <h2 id="persona-modal-title" class="text-lg font-bold text-slate-900">페르소나 설정</h2>
+    <p class="mt-1 text-xs text-slate-500">바꾼 설정은 다음 답변부터 적용돼요.</p>
+
+    <form id="persona-form" class="mt-4 space-y-4">
+      {# 전역 CSRFProtect 때문에 필수 — 없으면 400 #}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      {# 이름 (백엔드와 동일하게 20자 제한) #}
+      <div>
+        <label for="persona-name" class="block text-sm font-medium text-slate-700">이름</label>
+        <input id="persona-name" name="name" type="text" maxlength="20" required value="{{ persona.name }}" class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm
+                 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+      </div>
+
+      {# 아바타 — 자유 입력 대신 프리셋 그리드 (입력 수단·검증 문제 회피).
+      목록 바꾸면 personas.py의 ALLOWED_EMOJIS도 같이 바꿀 것 #}
+      <fieldset>
+        <legend class="block text-sm font-medium text-slate-700">아바타</legend>
+        <div class="mt-1 grid grid-cols-8 gap-1">
+          {% for e in ["🌱","✨","💧","🌷","🌙","🍀","🐰","⭐"] %}
+          <button type="button" data-emoji="{{ e }}" aria-label="아바타 {{ e }}" class="emoji-option h-9 rounded-lg text-xl hover:bg-slate-100
+                   {{ 'ring-2 ring-brand-500 bg-brand-50' if persona.avatar_emoji == e else '' }}">{{ e }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="avatar_emoji" id="avatar-emoji-input" value="{{ persona.avatar_emoji }}">
+      </fieldset>
+
+      {# 말투 — 토글 대신 라디오 (어느 쪽이 선택됐는지 명시적) #}
+      <fieldset>
+        <legend class="block text-sm font-medium text-slate-700">말투</legend>
+        <div class="mt-1 flex gap-4">
+          <label class="flex items-center gap-1.5 text-sm">
+            <input type="radio" name="talk_type" value="존댓말" {{ 'checked' if persona.talk_type=='존댓말' else '' }}> 존댓말
+          </label>
+          <label class="flex items-center gap-1.5 text-sm">
+            <input type="radio" name="talk_type" value="반말" {{ 'checked' if persona.talk_type=='반말' else '' }}> 반말
+          </label>
+        </div>
+      </fieldset>
+
+      {# 목소리 — TTS 미연결 상태라 값만 저장됨. 연결 시 미리듣기 버튼 추가 예정 #}
+      <div>
+        <label for="persona-voice" class="block text-sm font-medium text-slate-700">목소리</label>
+        <select id="persona-voice" name="voice_type"
+          class="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm">
+          <option value="voice_1" {{ 'selected' if persona.voice_type=='voice_1' else '' }}>목소리 1</option>
+          <option value="voice_2" {{ 'selected' if persona.voice_type=='voice_2' else '' }}>목소리 2</option>
+        </select>
+      </div>
+
+      {# 스타일 슬라이더 4개. output으로 현재 값 항상 표시 (접근성+조작감) #}
+      {% for key in ["말수","공감도","따듯함","전문성"] %}
+      <div>
+        <label for="param-{{ loop.index }}" class="flex justify-between text-sm font-medium text-slate-700">
+          <span>{{ key }}</span>
+          <output id="param-{{ loop.index }}-out" class="text-brand-600 font-semibold">{{ persona.params[key]
+            }}</output>
+        </label>
+        <input id="param-{{ loop.index }}" name="param_{{ key }}" type="range" min="1" max="10" step="1"
+          value="{{ persona.params[key] }}" class="mt-1 w-full accent-brand-600"
+          oninput="document.getElementById('param-{{ loop.index }}-out').textContent = this.value">
+        <div class="flex justify-between text-[10px] text-slate-400"><span>1</span><span>10</span></div>
+      </div>
+      {% endfor %}
+
+      <p id="persona-error" class="hidden text-xs text-red-600" role="alert"></p>
+
+      <button type="submit" class="w-full rounded-xl bg-brand-600 px-4 py-2.5 text-white font-medium
+               hover:bg-brand-700 transition text-sm">저장</button>
+    </form>
+
+
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -269,7 +360,10 @@
   }
 
   @keyframes heartbeatDot {
-    0%, 80%, 100% {
+
+    0%,
+    80%,
+    100% {
       transform: translateY(0);
       opacity: 0.35;
     }
@@ -281,11 +375,14 @@
   }
 
   @keyframes heartbeatCursorBlink {
-    0%, 49% {
+
+    0%,
+    49% {
       opacity: 1;
     }
 
-    50%, 100% {
+    50%,
+    100% {
       opacity: 0;
     }
   }
@@ -344,7 +441,7 @@
 
   function createAssistantAvatar() {
     const avatar = document.createElement('div');
-    avatar.className = 'flex-none w-8 h-8 rounded-full bg-{{ persona.accent_color }}-100 flex items-center justify-center text-base';
+    avatar.className = 'flex-none w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-base';
     avatar.textContent = '{{ persona.avatar_emoji }}';
     return avatar;
   }
@@ -519,6 +616,65 @@
       submitBtn.disabled = false;
       focusMessageInput();
       scrollToBottom();
+    }
+  });
+
+  // ===== 페르소나 설정 팝업 =====
+  const personaModal = document.getElementById('persona-modal');
+  const personaForm = document.getElementById('persona-form');
+
+  function openPersonaModal() {
+    personaModal.classList.remove('hidden');
+    personaModal.classList.add('flex');
+    document.getElementById('persona-name').focus();  // 접근성: 첫 입력으로 포커스 이동
+  }
+
+  function closePersonaModal() {
+    personaModal.classList.add('hidden');
+    personaModal.classList.remove('flex');
+    focusMessageInput();  // 포커스를 채팅 입력으로 복귀
+  }
+
+  // 배경 클릭·ESC로 닫기
+  personaModal.addEventListener('click', (e) => {
+    if (e.target === personaModal) closePersonaModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !personaModal.classList.contains('hidden')) closePersonaModal();
+  });
+
+  // 이모지 프리셋 선택 → hidden input 반영 + 선택 표시(ring)
+  document.querySelectorAll('.emoji-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.getElementById('avatar-emoji-input').value = btn.dataset.emoji;
+      document.querySelectorAll('.emoji-option').forEach((b) =>
+        b.classList.remove('ring-2', 'ring-brand-500', 'bg-brand-50'));
+      btn.classList.add('ring-2', 'ring-brand-500', 'bg-brand-50');
+    });
+  });
+
+  function showPersonaError(msg) {
+    const el = document.getElementById('persona-error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+
+  // 저장: POST /chat/persona → 성공 시 새로고침.
+  // 새로고침이 헤더 이름·이모지·인사말을 한 번에 갱신하는 가장 단순한 방법.
+  // 메시지는 서버 세션에 보관되므로 새로고침해도 유지됨.
+  personaForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('{{ url_for("chat.update_persona") }}', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(personaForm),
+      });
+      if (res.ok) { window.location.reload(); return; }
+      const data = await res.json().catch(() => ({}));
+      showPersonaError(data.error || '저장하지 못했어요. 다시 시도해 주세요.');
+    } catch {
+      showPersonaError('네트워크 연결이 불안정해요. 다시 시도해 주세요.');
     }
   });
 </script>
