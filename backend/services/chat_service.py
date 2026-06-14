@@ -176,9 +176,6 @@ async def process_chat(
             if persona is not None
             else (last_session.persona_type if last_session else None)
         )
-        inherited = normalize_persona(
-            persona if persona is not None else counseling_session.persona_type
-        )
         counseling_session = CounselingSession(
             id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
@@ -210,7 +207,9 @@ async def process_chat(
             await db_sensitive.flush()
             counseling_session = CounselingSession(
                 user_id=uuid.UUID(current_user["user_id"]),
-                persona_type=build_persona_payload("empathy"),
+                persona_type=normalize_persona(
+                    persona if persona is not None else counseling_session.persona_type
+                ),
                 is_active=True,
             )
             db_sensitive.add(counseling_session)
@@ -330,15 +329,6 @@ async def process_chat(
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
 
-    persona_source = persona if persona is not None else counseling_session.persona_type
-    p = normalize_persona(persona_source)
-    persona_prompt = build_persona_prompt(
-        params=p.get("params", {}),
-        name=p.get("name", ""),
-        talk_type=p.get("talk_type", "존댓말"),
-    )
-    if persona_prompt:
-        system_content += "\n\n" + persona_prompt
     # ── 페르소나 프롬프트 (캐시 본체와 분리, 매 요청 재생성) ──
     # 프론트가 보낸 persona 우선, 없으면 DB 세션 값 사용.
     persona_source = persona if persona is not None else counseling_session.persona_type

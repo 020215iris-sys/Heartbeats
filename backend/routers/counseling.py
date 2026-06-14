@@ -335,17 +335,16 @@ async def get_my_sessions(
     summary_map = {}
     for s in summaries:
         if s.session_id and s.session_id not in summary_map:
-            # W2 복호화: preview에 쓸 main_complaint 평문 복원 (실패 시 빈 문자열 폴백)
             try:
                 if s.main_complaint_encrypted is not None:
-                    summary_map[s.session_id] = decrypt_content(
+                    text = decrypt_content(
                         s.main_complaint_encrypted,
                         s.main_complaint_key_id,
                     )
-                else:
-                    summary_map[s.session_id] = ""
+                    if text:
+                        summary_map[s.session_id] = text
             except Exception:
-                summary_map[s.session_id] = ""
+                pass  # map에 추가 안 함 → fallback으로 넘어감
 
     # 요약 없는 세션 → 첫 사용자 메시지 50자로 대체
     sessions_needing_fallback = [s.id for s in sessions if s.id not in summary_map]

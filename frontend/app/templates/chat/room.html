@@ -237,6 +237,43 @@
 </script>
 {% endif %}
 
+{# ============ 면책 / 주의사항 팝업 ============ #}
+<div id="disclaimer-modal" role="dialog" aria-modal="true" aria-labelledby="disclaimer-title"
+  class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+  <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm px-6 py-6">
+
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xl">⚠️</span>
+      <h2 id="disclaimer-title" class="text-base font-bold text-slate-900">이용 전 꼭 확인해 주세요</h2>
+    </div>
+
+    <ul class="space-y-2 text-sm text-slate-600">
+      <li class="flex gap-2">
+        <span class="flex-none text-slate-400">•</span>
+        <span>하트비트는 <strong class="text-slate-800">AI 기반 감정케어 서비스</strong>로, 전문 의료·심리치료 서비스가 아닙니다.</span>
+      </li>
+      <li class="flex gap-2">
+        <span class="flex-none text-slate-400">•</span>
+        <span>AI의 응답은 전문 상담사나 의사의 소견을 <strong class="text-slate-800">대체할 수 없습니다.</strong></span>
+      </li>
+      <li class="flex gap-2">
+        <span class="flex-none text-slate-400">•</span>
+        <span>자해·자살 등 위기 상황이라면 즉시 <strong class="text-slate-800">자살예방상담전화 1393</strong>(24시간)에 연락해 주세요.</span>
+      </li>
+      <li class="flex gap-2">
+        <span class="flex-none text-slate-400">•</span>
+        <span>대화 내용은 암호화되어 저장되며 서비스 개선 목적으로만 활용됩니다.</span>
+      </li>
+    </ul>
+
+    <button type="button" id="disclaimer-confirm"
+      class="mt-5 w-full rounded-xl bg-brand-500 py-2.5 text-sm font-semibold text-white
+             hover:bg-brand-600 active:scale-95 transition">
+      확인했습니다
+    </button>
+  </div>
+</div>
+
 {# ============ 페르소나 설정 팝업 ============
 헤더 ⚙️ 버튼으로 열림 (기본 hidden).
 저장 → fetch POST /chat/persona → 성공 시 새로고침으로 헤더·인사말 일괄 갱신.
@@ -677,5 +714,14 @@
       showPersonaError('네트워크 연결이 불안정해요. 다시 시도해 주세요.');
     }
   });
+  // ===== 면책 팝업 (매 진입 시) =====
+  (function () {
+    const modal = document.getElementById('disclaimer-modal');
+    document.getElementById('disclaimer-confirm').addEventListener('click', () => {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      focusMessageInput();
+    });
+  })();
 </script>
 {% endblock %}
