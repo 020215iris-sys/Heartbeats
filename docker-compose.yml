@@ -132,6 +132,7 @@ services:
       - ./backend/.env
     environment:                                              # ← 이 두 줄 추가
        DB_AUDIT_WRITER_PASSWORD: ${DB_AUDIT_WRITER_PASSWORD}  # final_project/.env에서 가져옴
+       ENCRYPTION_KEY: ${ENCRYPTION_KEY}                      # W2 AES-256-GCM 본문 암호화 키
     ports:
       - "8000:8000"
     volumes:                    # ← 이 두 줄 추가
@@ -168,6 +169,7 @@ services:
       - ./backend/.env
     environment:
       DB_AUDIT_WRITER_PASSWORD: ${DB_AUDIT_WRITER_PASSWORD}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}                      # W2 AES-256-GCM 본문 암호화 키 (요약 저장 태스크가 사용)
       PYTHONPATH: /app
     volumes:
       - ./backend:/app
