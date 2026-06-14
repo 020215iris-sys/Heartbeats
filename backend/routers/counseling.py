@@ -258,15 +258,21 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
         print("=== RISK CLASSIFICATION FAILED ===")
         print(str(e))
 
+# W2 암호화: 평문을 BYTEA + key_id 짝으로 저장
+    mc_bytes, mc_kid = encrypt_content(summary_data.get("main_complaint", "") or "")
+    nsn_bytes, nsn_kid = encrypt_content(summary_data.get("next_session_notes", "") or "")
+
     new_summary = Summary(
         session_id=session.id,
         user_id=session.user_id,
-        main_complaint=summary_data.get("main_complaint", ""),
+        main_complaint_encrypted=mc_bytes,
+        main_complaint_key_id=mc_kid,
+        next_session_notes_encrypted=nsn_bytes,
+        next_session_notes_key_id=nsn_kid,
         risk_level=summary_data.get("risk_level", "low"),
         suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
         core_topics=summary_data.get("core_topics", []),
         prompt_adjustment=summary_data.get("prompt_adjustment", []),
-        next_session_notes=summary_data.get("next_session_notes", ""),
         important_memory=summary_data.get("important_memory", []),
     )
 
@@ -324,7 +330,17 @@ async def get_my_sessions(
     summary_map = {}
     for s in summaries:
         if s.session_id and s.session_id not in summary_map:
-            summary_map[s.session_id] = s.main_complaint
+            # W2 복호화: preview에 쓸 main_complaint 평문 복원 (실패 시 빈 문자열 폴백)
+            try:
+                if s.main_complaint_encrypted is not None:
+                    summary_map[s.session_id] = decrypt_content(
+                        s.main_complaint_encrypted,
+                        s.main_complaint_key_id,
+                    )
+                else:
+                    summary_map[s.session_id] = ""
+            except Exception:
+                summary_map[s.session_id] = ""
 
     # 요약 없는 세션 → 첫 사용자 메시지 50자로 대체
     sessions_needing_fallback = [s.id for s in sessions if s.id not in summary_map]

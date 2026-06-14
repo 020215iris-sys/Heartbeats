@@ -182,14 +182,20 @@ class Summary(BaseSensitive):
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id         = Column(UUID(as_uuid=True), ForeignKey("counseling_sessions.id"), nullable=False)
     user_id            = Column(UUID(as_uuid=True), nullable=False)
-    main_complaint     = Column(Text, nullable=True)
+
+    # W2 암호화: main_complaint, next_session_notes는 평문 TEXT → BYTEA + key_id 짝으로 분리.
+    # 저장·조회는 반드시 core.crypto.encrypt_content / decrypt_content 통과.
+    main_complaint_encrypted     = Column(LargeBinary, nullable=True)
+    main_complaint_key_id        = Column(String(50), nullable=True)
+    next_session_notes_encrypted = Column(LargeBinary, nullable=True)
+    next_session_notes_key_id    = Column(String(50), nullable=True)
+
     risk_level         = Column(String, default="low")
     suicidal_mentioned = Column(Boolean, default=False)
-    core_topics        = Column(JSONB, nullable=True)
-    next_session_notes = Column(Text, nullable=True)
-    prompt_adjustment  = Column(JSONB, nullable=True)
+    core_topics        = Column(JSONB, nullable=True)        # 키워드 배열, 평문 유지
+    prompt_adjustment  = Column(JSONB, nullable=True)        # 태그 배열, 평문 유지
+    important_memory   = Column(JSONB, nullable=True)        # 장기 사실, 평문 유지 (향후 검토)
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    important_memory   = Column(JSONB, nullable=True)
 
 
 class VoiceFile(BaseSensitive):
