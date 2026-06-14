@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from models import Conversation, CounselingSession, Summary
+from models import Conversation, CounselingSession, Summary, Classification, ClassificationResult
 from core.security import verify_access_token
 from core.crypto import encrypt_content, decrypt_content
 from routers.counseling import close_session_with_summary
@@ -67,10 +67,69 @@ FOREIGN_FALLBACK_REPLIES = [
 # 외국어 감지
 # ─────────────────────────────────────────
 def contains_foreign(text: str) -> bool:
-    # 한글·숫자·공백·기본 구두점만 허용, 나머지는 외국어로 감지
-    # (영어, 한자, 일본어, 전각문자 등 모두 차단)
-    pattern = r'[^가-힣ᄀ-ᇿ㄰-㆏0-9\s.,!?~\-\'"()…·%:/*]'
+    # 한글·영문, 숫자·공백·기본 구두점만 허용, 나머지는 외국어로 감지
+    # (한자, 일본어, 전각문자 등 모두 차단)
+    pattern = r'[^가-힣ᄀ-ᇿ㄰-㆏A-Za-z0-9\s.,!?~\-\'"()…·%:/*]'
     return bool(re.search(pattern, text))
+
+
+# ─────────────────────────────────────────
+# 설문결과(classification) 로드 / 프롬프트 변환
+# ─────────────────────────────────────────
+async def load_classification_results(user_id, db_sensitive) -> list[dict]:
+    """사용자의 '가장 최근' 설문(Classification)의 결과 행들을 dict 리스트로 반환.
+    설문 이력이 없으면 빈 리스트.
+    재대화/첫대화 모두 항상 최신 설문 상태를 반영하기 위해 user_id 기준으로 조회한다."""
+    # 1) 해당 사용자의 가장 최근 설문 한 건 조회
+    latest = await db_sensitive.execute(
+        select(Classification)
+        .where(
+            Classification.user_id == uuid.UUID(user_id),
+            Classification.deleted_at == None,
+        )
+        .order_by(Classification.created_at.desc())
+        .limit(1)
+    )
+    latest_classification = latest.scalar()
+    if not latest_classification:
+        return []
+
+    # 2) 그 설문의 카테고리별 결과 조회
+    result = await db_sensitive.execute(
+        select(ClassificationResult).where(
+            ClassificationResult.classification_id == latest_classification.id
+        )
+    )
+    return [
+        {
+            "category_code": r.category_code,
+            "severity": r.severity,
+            "total_score": r.total_score,
+            "score_delta": r.score_delta,
+        }
+        for r in result.scalars().all()
+    ]
+
+
+def build_classification_prompt(results: list[dict]) -> str:
+    """첫 대화(GENERAL_PROMPT)에 덧붙일 설문결과 텍스트 블록 생성.
+    재대화(agent)는 구조화된 데이터를 직접 받으므로 이 함수를 쓰지 않는다."""
+    if not results:
+        return ""
+    lines = [
+        "[설문 결과]",
+        "사용자의 사전 설문 결과다. 상담 태도·전략에만 반영하고 직접 언급하지 않는다:",
+    ]
+    for r in results:
+        d = r.get("score_delta")
+        trend = "" if d is None else f", 변화 {'+' if d > 0 else ''}{d}"
+        score = r.get("total_score")
+        score_text = score if score is not None else "미상"
+        lines.append(
+            f"- {r['category_code']}: 심각도 {r.get('severity') or '미상'}, "
+            f"점수 {score_text}{trend}"
+        )
+    return "\n".join(lines)
 
 
 # ─────────────────────────────────────────
@@ -158,10 +217,18 @@ async def process_chat(
             await db_sensitive.flush()
             use_summary = True
 
+    # 3.5 설문결과 로드 — 항상 사용자의 '최신' 설문 기준 (첫 대화 + 재대화 공통)
+    classification_results = await load_classification_results(
+        current_user["user_id"], db_sensitive
+    )
+
     # 4. system_prompt 결정
     summary_result = await db_sensitive.execute(
         select(Summary)
-        .where(Summary.user_id == uuid.UUID(current_user["user_id"]))
+        .where(
+            Summary.user_id == uuid.UUID(current_user["user_id"]),
+            Summary.deleted_at.is_(None),
+        )
         .order_by(Summary.created_at.desc())
         .limit(1)
     )
@@ -186,7 +253,7 @@ async def process_chat(
 
         prompt_agent_input = {
             "nickname": current_user.get("nickname", "사용자"),
-            "classification_results": {},
+            "classification_results": classification_results,
             "summary": {
                 "main_complaint": _safe_decrypt(
                     recent_summary.main_complaint_encrypted,
@@ -256,6 +323,9 @@ async def process_chat(
     else:
         # 첫 대화: general_prompt 사용
         system_content = GENERAL_PROMPT
+        classification_block = build_classification_prompt(classification_results)
+        if classification_block:
+            system_content += "\n\n" + classification_block
         system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
@@ -337,32 +407,12 @@ async def process_chat(
     print("=== REPLY CHECK ===", reply)  # 외국어 감지 필터 들어가기 전
     print("=== REPLY CHECK - 외국어감지 전 ===", contains_foreign(reply))
 
-    # 6. 외국어 감지 시 재요청
+    # 6. 외국어 감지 (재생성 OFF - 테스트용)
+    #    외국어가 감지돼도 재요청/폴백 없이 그대로 내보낸다.
+    #    286번 줄 로그로 외국어 출현 여부는 계속 확인 가능.
+    #    되돌릴 때는 아래 블록을 원래 "재요청 + 폴백" 코드로 복구하면 됨.
     if not is_crisis and contains_foreign(reply):
-        base_content = SESSION_PROMPT_CACHE.get(cache_key, "")
-        reinforced_base = base_content + "\n\n모든 응답은 반드시 한글로만 작성한다. 영어를 포함한 외국어 사용 금지."
-        SESSION_PROMPT_CACHE[cache_key] = reinforced_base
-        reinforced = reinforced_base + ("\n\n" + persona_prompt if persona_prompt else "")
-        
-        messages_foreign = (
-            [
-                {"role": "system", "content": reinforced},
-                {"role": "user", "content": message},
-            ]
-            if use_summary
-            else [
-                {"role": "system", "content": reinforced},
-                *history,
-                {"role": "user", "content": message},
-            ]
-        )
-        response = groq_client.chat.completions.create(
-            model="gpt-oss-120b", messages=messages_foreign
-        )
-        reply = response.choices[0].message.content
-        print("=== REPLY CHECK (재요청 후) ===", reply)
-        if contains_foreign(reply):
-            reply = random.choice(FOREIGN_FALLBACK_REPLIES)
+        pass   # 외국어 감지돼도 재요청/폴백 없이 그대로 출력
 
     print("=== REPLY CHECK (필터 후) ===", reply)
 

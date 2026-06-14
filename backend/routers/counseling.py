@@ -325,7 +325,10 @@ async def get_my_sessions(
     # 세션별 summary → preview
     summary_result = await db_sensitive.execute(
         select(Summary)
-        .where(Summary.user_id == user_id)
+        .where(
+            Summary.user_id == user_id,
+            Summary.deleted_at.is_(None),
+        )
         .order_by(Summary.created_at.desc())
     )
     summaries = summary_result.scalars().all()

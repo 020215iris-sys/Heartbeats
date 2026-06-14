@@ -185,3 +185,30 @@ services:
     networks:
       - heartbeat_net
     command: celery -A celery_app worker --loglevel=info --concurrency=2
+
+      # ===========================================
+  # Celery Beat: 스케줄러 (자동삭제·익명화 정기 트리거)
+  # - 매일 새벽 3시 시리즈로 cleanup 4개 태스크 dispatch
+  # - 실행 자체는 celery_worker가 처리 (beat은 시간만 감시)
+  # - 단일 인스턴스만 — 중복 dispatch 방지 (운영 시 주의)
+  # ===========================================
+  celery_beat:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: heartbeat_celery_beat
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DB_AUDIT_WRITER_PASSWORD: ${DB_AUDIT_WRITER_PASSWORD}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}                      # tasks/__init__.py가 summary.py도 import해서 chain 발생 대비
+      PYTHONPATH: /app
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - heartbeat_net
+    command: celery -A celery_app beat --loglevel=info

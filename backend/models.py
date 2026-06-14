@@ -138,13 +138,14 @@ class ClassificationResult(BaseSensitive):
     severity          = Column(String, nullable=True)
     score_delta       = Column(SmallInteger, nullable=True)
     created_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at        = Column(DateTime(timezone=True), nullable=True)   # 자동삭제(1년, parent classifications와 동기)
 
 
 class CounselingSession(BaseSensitive):
     __tablename__ = "counseling_sessions"
 
     id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id           = Column(UUID(as_uuid=True), nullable=False)
+    user_id           = Column(UUID(as_uuid=True), nullable=True)   # 1년 후 익명화 시 NULL로 SET
     classification_id = Column(UUID(as_uuid=True), ForeignKey("classifications.id"), nullable=True)
     # 변경: String → JSONB
     # default를 lambda로 감싸는 이유: dict 직접 default로 두면 모든 인스턴스가
@@ -197,6 +198,7 @@ class Summary(BaseSensitive):
     important_memory   = Column(JSONB, nullable=True)        # 장기 사실, 평문 유지 (향후 검토)
 
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at         = Column(DateTime(timezone=True), nullable=True)   # 자동삭제(1년) soft delete 시각
 
 
 class VoiceFile(BaseSensitive):

@@ -104,6 +104,8 @@ async def submit_active_survey(
             .where(
                 Classification.user_id == user_uuid,
                 ClassificationResult.category_code == code,
+                Classification.deleted_at.is_(None),
+                ClassificationResult.deleted_at.is_(None),
             )
             .order_by(ClassificationResult.created_at.desc())
             .limit(1)
@@ -156,11 +158,14 @@ async def get_classification(
     except ValueError:
         raise HTTPException(422, "classification_id가 올바른 UUID가 아닙니다.")
     cls = await db.get(Classification, cid)
-    if cls is None or cls.user_id != uuid.UUID(current_user["user_id"]):
+    if cls is None or cls.user_id != uuid.UUID(current_user["user_id"]) or cls.deleted_at is not None:
         raise HTTPException(404, "해당 분류 결과를 찾을 수 없습니다.")
     rows = (await db.execute(
         select(ClassificationResult)
-        .where(ClassificationResult.classification_id == cid)
+        .where(
+            ClassificationResult.classification_id == cid,
+            ClassificationResult.deleted_at.is_(None),
+        )
     )).scalars().all()
     return {
         "classification_id": str(cls.id),
