@@ -93,5 +93,24 @@
             document.getElementById("inviteMessage").value = "코드 발급에 실패했어요. 다시 시도해주세요.";
         }
     }
+    function closeInviteModal() {
+        const m = document.getElementById("inviteModal");
+        m.classList.add("hidden");
+        m.classList.remove("flex");
+    }
+        function copyInvite() {
+        const text = document.getElementById("inviteMessage").value;
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById("copyBtn");
+            btn.textContent = "복사됐어요!";
+            setTimeout(() => { btn.textContent = "초대 문구 복사"; }, 2000);
+        }).catch(() => {
+            // clipboard API 실패 시 fallback
+            const ta = document.getElementById("inviteMessage");
+            ta.select();
+            document.execCommand("copy");
+        });
+    }
 </script>
 {% endblock %}

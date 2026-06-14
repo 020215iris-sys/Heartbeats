@@ -15,7 +15,7 @@ import os
 import yaml
 from core.crypto import decrypt_content, encrypt_content
 from services.summary_service import request_summary
-from services.personas import get_persona, DEFAULT_PERSONA_CODE
+from services.personas import normalize_persona, DEFAULT_PERSONA
 
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
@@ -24,6 +24,7 @@ class ChatMessage(BaseModel):
     message: str
     session_id: str
     history: list[dict] = []
+    persona: Optional[dict] = None
 
 @router.post("/chat")
 async def chat(
@@ -37,6 +38,7 @@ async def chat(
         message=body.message,
         session_id=body.session_id,
         history=body.history,
+        persona=body.persona,
         token=authorization,
         db_sensitive=db_sensitive,
         db_audit=db_audit,
@@ -333,17 +335,16 @@ async def get_my_sessions(
     summary_map = {}
     for s in summaries:
         if s.session_id and s.session_id not in summary_map:
-            # W2 복호화: preview에 쓸 main_complaint 평문 복원 (실패 시 빈 문자열 폴백)
             try:
                 if s.main_complaint_encrypted is not None:
-                    summary_map[s.session_id] = decrypt_content(
+                    text = decrypt_content(
                         s.main_complaint_encrypted,
                         s.main_complaint_key_id,
                     )
-                else:
-                    summary_map[s.session_id] = ""
+                    if text:
+                        summary_map[s.session_id] = text
             except Exception:
-                summary_map[s.session_id] = ""
+                pass  # map에 추가 안 함 → fallback으로 넘어감
 
     # 요약 없는 세션 → 첫 사용자 메시지 50자로 대체
     sessions_needing_fallback = [s.id for s in sessions if s.id not in summary_map]
@@ -410,22 +411,7 @@ async def start_session(
         # ↓↓↓ ★ 여기 (new_session 생성 직전) ★ ↓↓↓
         # ───────── 페르소나 정규화 + 스냅샷 페이로드 빌드 ─────────
 
-        # 클라이언트가 안 보냈으면 기본값. 보냈다면 dict 안의 code만 우선 추출.
-        incoming = body.persona_type or {"code": DEFAULT_PERSONA_CODE}
-
-        # personas.py에서 유효 코드 lookup (없는 코드면 DEFAULT_PERSONA_CODE로 폴백)
-        # → 잘못된 코드가 DB에 들어가는 걸 방지
-        persona_meta = get_persona(incoming.get("code"))
-
-        # DB에는 스냅샷 저장: personas.py가 향후 바뀌어도 과거 세션이 깨지지 않음
-        # version은 personas.py 스키마 변경 시 증가 (예: avatar_image 필드 추가하면 'v2')
-        persona_payload = {
-            "code": persona_meta["code"],
-            "name": persona_meta["name"],
-            "version": "v1",
-            # 사용자가 커스텀 파라미터 보낸 경우 보존 (없으면 빈 dict)
-            "params": incoming.get("params") or {},
-        }
+        persona_payload = normalize_persona(body.persona_type)
 
         # ───────── 페르소나 정규화 끝 ─────────
 

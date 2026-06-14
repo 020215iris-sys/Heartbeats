@@ -20,7 +20,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, session,
 from datetime import datetime
 from ..forms.chat import ChatMessageForm
 from ..services import guest as guest_svc
-from ..services.personas import get_persona
+from ..services.personas import normalize_persona, build_greeting
 from ..services import api_client
 
 bp = Blueprint("chat", __name__)
@@ -75,16 +75,22 @@ def room():
         flash("채팅을 시작하려면 로그인하거나 익명 체험을 시작해주세요.", "info")
         return redirect(url_for("main.landing"))
     
-    # 페르소나 결정.
-    # 추후 사용자가 페르소나 선택 기능 만들면 session["persona_code"]로 분기.
-    # 지금은 항상 기본 페르소나(empathy).
-    persona = get_persona(session.get("persona_code"))
+    # ── 페르소나 결정 (v2 커스텀) ──────────────────────
+    # 우선순위:
+    #   ① Flask 세션에 이미 있음 — 이번 방문에서 로드했거나 팝업으로 수정한 값
+    #   ② 백엔드 직전 세션의 persona_type — "마지막 사용 페르소나 이어받기"
+    #   ③ 기본 페르소나 (신규 사용자·게스트·백엔드 연결 실패)
+    # normalize_persona가 v1 구형/누락 필드/이상값을 전부 흡수하므로
+    # 이 아래부터 persona는 항상 완전한 v2 dict임이 보장됨.
+    if "persona" not in session:
+        last = api_client.get_last_persona() if is_authenticated else None
+        session["persona"] = normalize_persona(last)
+    persona = session["persona"]
 
-    # 첫 방문이면 캐릭터의 인사말을 자동 삽입.
-    # 이걸 세션에 박아두면 새로고침해도 인사말이 유지되고,
-    # 매번 _get_messages()를 부르는 곳에서 별도 처리 안 해도 됨.
+    # 첫 방문이면 페르소나 말투(반말/존댓말)에 맞는 인사말 자동 삽입.
+    # 세션에 박아두면 새로고침해도 유지됨.
     if not _get_messages():
-        _append_message("assistant", persona["greeting"])
+        _append_message("assistant", build_greeting(persona))
 
     form = ChatMessageForm()
 
@@ -115,11 +121,14 @@ def room():
         if is_guest:
             guest_svc.increment_message_count()
 
-        # ===== 3. AI 응답 (백엔드 /chat 호출) ===== 
+        # persona를 매 요청 동봉 — 백엔드가 이 값으로 페르소나 프롬프트를 만들고,
+        # DB 값과 다르면 그 시점에 counseling_sessions.persona_type을 UPDATE함.
+        # (프론트는 저장 API를 따로 호출하지 않음. 계약 문서 참고)
         ai_reply = api_client.send_chat_message(
             user_message=user_message,
             history=history_before,
             user_id=session.get("user_id"),
+            persona=session.get("persona"),
         )
 
         _append_message("assistant", ai_reply, now)
@@ -141,9 +150,54 @@ def room():
         show_signup_modal=show_signup_modal,
     )
 
+@bp.route("/persona", methods=["POST"])
+def update_persona():
+    """
+    페르소나 팝업 저장 처리. (room.html 팝업에서 fetch POST로 호출)
+
+    동작:
+    - 폼 값 → v2 dict 조립 → normalize_persona로 검증·보정 → Flask 세션 저장
+    - DB 저장은 여기서 안 함! 다음 채팅 메시지에 persona가 동봉되면
+      백엔드가 변경을 감지하고 알아서 UPDATE (B-3 주석 참고)
+    - 아직 대화 전(인사말 1개뿐)이면 인사말을 새 페르소나 말투로 교체
+
+    ⚠️ CSRF: 전역 CSRFProtect 적용 중 → 팝업 폼에 csrf_token hidden 필드 필수
+       (room.html 수정안에 포함 예정)
+    """
+    # 익명 사용자 차단 — room()과 동일한 접근 정책
+    if "access_token" not in session and not guest_svc.is_guest():
+        return jsonify({"ok": False, "error": "로그인이 필요해요."}), 401
+
+    # 슬라이더 값은 문자열로 오지만 normalize_persona가 int 변환·클램프 처리
+    raw = {
+        "name": request.form.get("name", ""),
+        "avatar_emoji": request.form.get("avatar_emoji", ""),
+        "talk_type": request.form.get("talk_type", ""),
+        "voice_type": request.form.get("voice_type", ""),
+        "params": {
+            "말수": request.form.get("param_말수"),
+            "공감도": request.form.get("param_공감도"),
+            "따듯함": request.form.get("param_따듯함"),
+            "전문성": request.form.get("param_전문성"),
+        },
+    }
+    session["persona"] = normalize_persona(raw)
+
+    # 대화 시작 전이면 인사말 갱신 (이미 대화 중이면 흐름 안 끊고 다음 응답부터 반영)
+    messages = _get_messages()
+    if len(messages) == 1 and messages[0]["role"] == "assistant":
+        session["chat_messages"] = []
+        _append_message("assistant", build_greeting(session["persona"]))
+
+    return jsonify({"ok": True, "persona": session["persona"]})
+
 @bp.route("/clear", methods=["POST"])
 def clear():
     """대화 초기화. 새로 시작하고 싶을 때 사용자가 명시적으로 호출."""
     session.pop("chat_messages", None)
+    # 세션 ID도 버림 — 다음 메시지부터 백엔드에 새 상담 세션이 생기게.
+    # 안 지우면 "초기화"했는데 백엔드는 옛 세션에 계속 이어붙이는 불일치 발생.
+    # persona는 유지 (초기화해도 캐릭터는 이어받는 게 자연스러움)
+    session.pop("chat_session_id", None)
     flash("대화가 초기화되었어요.", "info")
     return redirect(url_for("chat.room"))

@@ -95,8 +95,7 @@ def signup(
         "needs_guardian_link": data.get("needs_guardian_link", False),
     }
 
-
-def send_chat_message(user_message: str, history: list, user_id: str | None) -> str:
+def send_chat_message(user_message: str, history: list, user_id: str | None, persona: dict | None = None) -> str:
     """
     AI 채팅 메시지 전송. 백엔드 /chat 호출 후 응답 텍스트 반환.
     연결 실패 시 안내 문구 반환.
@@ -120,6 +119,7 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
                 "message": user_message,
                 "session_id": chat_session_id,  # 백엔드 필수값
                 "history": [{"role": h["role"], "content": h["content"]} for h in history],
+                "persona": persona,
             },
             headers={
                 "Authorization": f"Bearer {access_token}"  # JWT 인증
@@ -141,14 +141,13 @@ def send_chat_message(user_message: str, history: list, user_id: str | None) -> 
                     if r.ok:
                         # 새 access_token 저장 후 원래 요청 재시도
                         flask_session["access_token"] = r.json()["access_token"]
-                        flask_session["chat_session_id"] = str(uuid.uuid4())
-                        chat_session_id = flask_session["chat_session_id"]
                         retry = requests.post(
                             f"{_base_url()}/counseling/chat",
                             json={
                                 "message": user_message,
                                 "session_id": chat_session_id,
-                                "history": history,
+                                "history": [{"role": h["role"], "content": h["content"]} for h in history],
+                                "persona": persona,                                
                             },
                             headers={"Authorization": f"Bearer {flask_session['access_token']}"},
                             timeout=15,
@@ -259,4 +258,11 @@ def create_guardian_invite() -> dict | None:
             return res.json()
     except requests.RequestException:
         pass
+    return None
+
+def get_last_persona() -> dict | None:
+    """직전 세션의 persona_type 반환. 세션 없거나 미로그인이면 None."""
+    sessions = get_sessions(limit=1)
+    if sessions:
+        return sessions[0].get("persona_type")
     return None
