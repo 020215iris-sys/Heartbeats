@@ -457,4 +457,4 @@ async def process_chat(
     await db_sensitive.commit()
     await db_audit.commit()
 
-    return 
+    return reply
