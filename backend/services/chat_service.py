@@ -198,7 +198,10 @@ async def process_chat(
     # 4. system_prompt 결정
     summary_result = await db_sensitive.execute(
         select(Summary)
-        .where(Summary.user_id == uuid.UUID(current_user["user_id"]))
+        .where(
+            Summary.user_id == uuid.UUID(current_user["user_id"]),
+            Summary.deleted_at.is_(None),
+        )
         .order_by(Summary.created_at.desc())
         .limit(1)
     )
