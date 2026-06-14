@@ -176,11 +176,16 @@ async def process_chat(
     if last:
         elapsed = datetime.now(timezone.utc) - last.created_at.replace(tzinfo=timezone.utc)
         if elapsed > timedelta(minutes=60):
-            await close_session_with_summary(counseling_session, db_sensitive, db_audit)
-            SESSION_PROMPT_CACHE.pop(str(counseling_session.id), None)
+            old_session_id = str(counseling_session.id)
+            SESSION_PROMPT_CACHE.pop(old_session_id, None)
+            # 옛 세션은 '닫기'만 동기로 빠르게 (요약 생성은 하지 않음)
             counseling_session.ended_at = datetime.now(timezone.utc)
             counseling_session.is_active = False
             await db_sensitive.flush()
+            # 무거운 요약(/summary 호출)은 celery 백그라운드로 분리 → 응답 막지 않음
+            from tasks.summary import summarize_session
+            summarize_session.delay(old_session_id)
+            # 새 세션 생성
             counseling_session = CounselingSession(
                 user_id=uuid.UUID(current_user["user_id"]),
                 persona_type=build_persona_payload("empathy"),
@@ -421,4 +426,4 @@ async def process_chat(
     await db_sensitive.commit()
     await db_audit.commit()
 
-    return reply
+    return 
