@@ -12,11 +12,11 @@ from models import Conversation, CounselingSession, Summary, Classification, Cla
 from core.security import verify_access_token
 from core.crypto import encrypt_content, decrypt_content
 from routers.counseling import close_session_with_summary
-from services.personas import build_persona_payload
+from services.personas import normalize_persona, DEFAULT_PERSONA
 from services.persona_service import build_persona_prompt
 from services.audit_service import log_sensitive
-from services.crisis_response import get_crisis_response_message,save_crisis_event
-from services.crisis_tool_schema import CRISIS_TOOL,CRISIS_TOOL_INSTRUCTION
+from services.crisis_response import get_crisis_response_message, save_crisis_event
+from services.crisis_tool_schema import CRISIS_TOOL, CRISIS_TOOL_INSTRUCTION
 
 load_dotenv()
 
@@ -34,11 +34,15 @@ groq_client = OpenAI(
 # ─────────────────────────────────────────
 # 프롬프트 로드
 # ─────────────────────────────────────────
-AGENT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../../ai/prompts/active/prompt_agent_prompt.txt")
+AGENT_PROMPT_PATH = os.path.join(
+    os.path.dirname(__file__), "../../ai/prompts/active/prompt_agent_prompt.txt"
+)
 with open(AGENT_PROMPT_PATH, "r", encoding="utf-8") as f:
     AGENT_PROMPT = f.read()
 
-GENERAL_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "../../ai/prompts/active/general_prompt.txt")
+GENERAL_PROMPT_PATH = os.path.join(
+    os.path.dirname(__file__), "../../ai/prompts/active/general_prompt.txt"
+)
 with open(GENERAL_PROMPT_PATH, "r", encoding="utf-8") as f:
     GENERAL_PROMPT = f.read()
 
@@ -135,6 +139,7 @@ async def process_chat(
     message: str,
     session_id: str,
     history: list[dict],
+    persona: dict | None,
     token: str,
     db_sensitive: AsyncSession,
     db_audit: AsyncSession,
@@ -148,17 +153,34 @@ async def process_chat(
     result = await db_sensitive.execute(
         select(CounselingSession).where(
             CounselingSession.id == uuid.UUID(session_id),
-            CounselingSession.deleted_at == None
+            CounselingSession.deleted_at == None,
         )
     )
     counseling_session = result.scalar()
 
     if not counseling_session:
+        # 이전 세션 persona 복사 → 없으면 기본값.
+        # 프론트가 보낸 persona가 있으면 그게 우선.
+        last_result = await db_sensitive.execute(
+            select(CounselingSession)
+            .where(
+                CounselingSession.user_id == uuid.UUID(current_user["user_id"]),
+                CounselingSession.deleted_at == None,
+            )
+            .order_by(CounselingSession.started_at.desc())
+            .limit(1)
+        )
+        last_session = last_result.scalar()
+        inherited = normalize_persona(
+            persona
+            if persona is not None
+            else (last_session.persona_type if last_session else None)
+        )
         counseling_session = CounselingSession(
             id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
-            persona_type=build_persona_payload("empathy"),
-            is_active=True
+            persona_type=inherited,
+            is_active=True,
         )
         db_sensitive.add(counseling_session)
         await db_sensitive.flush()
@@ -174,7 +196,9 @@ async def process_chat(
     )
     last = last_msg.scalar()
     if last:
-        elapsed = datetime.now(timezone.utc) - last.created_at.replace(tzinfo=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - last.created_at.replace(
+            tzinfo=timezone.utc
+        )
         if elapsed > timedelta(minutes=60):
             old_session_id = str(counseling_session.id)
             SESSION_PROMPT_CACHE.pop(old_session_id, None)
@@ -188,8 +212,10 @@ async def process_chat(
             # 새 세션 생성
             counseling_session = CounselingSession(
                 user_id=uuid.UUID(current_user["user_id"]),
-                persona_type=build_persona_payload("empathy"),
-                is_active=True
+                persona_type=normalize_persona(
+                    persona if persona is not None else counseling_session.persona_type
+                ),
+                is_active=True,
             )
             db_sensitive.add(counseling_session)
             await db_sensitive.flush()
@@ -242,6 +268,7 @@ async def process_chat(
                     recent_summary.next_session_notes_encrypted,
                     recent_summary.next_session_notes_key_id,
                 ),
+
                 "prompt_adjustment": recent_summary.prompt_adjustment,
                 "important_memory": recent_summary.important_memory,
             },
@@ -258,8 +285,11 @@ async def process_chat(
             model="gpt-oss-120b",
             messages=[
                 {"role": "system", "content": AGENT_PROMPT},
-                {"role": "user", "content": json.dumps(prompt_agent_input, ensure_ascii=False)},
-            ]
+                {
+                    "role": "user",
+                    "content": json.dumps(prompt_agent_input, ensure_ascii=False),
+                },
+            ],
         )
         print("=== PROMPT: 재상담 - Agent 생성 ===")
         raw = agent_response.choices[0].message.content.strip()
@@ -288,15 +318,12 @@ async def process_chat(
                 "정서적 안정화를 우선한다."
             )
 
-        print(
-           "foreign =",
-            contains_foreign(agent_result["system_prompt"])
-        )
+        print("foreign =", contains_foreign(agent_result["system_prompt"]))
 
         system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
         system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
         SESSION_PROMPT_CACHE[cache_key] = system_content
-        print("=== system_prompt ===") # Agent가 생성한 system_prompt 내용
+        print("=== system_prompt ===")  # Agent가 생성한 system_prompt 내용
         print(agent_result["system_prompt"])
 
     else:
@@ -309,35 +336,42 @@ async def process_chat(
         SESSION_PROMPT_CACHE[cache_key] = system_content
         print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
 
+    # ── 페르소나 프롬프트 (캐시 본체와 분리, 매 요청 재생성) ──
+    # 프론트가 보낸 persona 우선, 없으면 DB 세션 값 사용.
+    persona_source = persona if persona is not None else counseling_session.persona_type
+    p = normalize_persona(persona_source)
+    persona_prompt = build_persona_prompt(p)
+    if persona_prompt:
+        system_content += "\n\n" + persona_prompt
 
-    # 패르소나 연결 - 사용자 커스텀 슬라이더 형식
-    persona_data = counseling_session.persona_type
-    if isinstance(persona_data, dict):
-        params = persona_data.get("params", {})
-        if params:
-            persona_prompt = build_persona_prompt(params)
-            if persona_prompt:
-                system_content += "\n\n" + persona_prompt
-
+    # dirty-check: 프론트 persona가 DB와 다르면 UPDATE.
+    # 브라우저 닫기·타임아웃으로 끝나도 마지막 값이 항상 DB에 남음.
+    if persona is not None and counseling_session.persona_type != p:
+        counseling_session.persona_type = p
+        await db_sensitive.flush()
 
     # 5. Groq 응답 요청
     print("=== PROMPT 사용 ===")
-    print(f"=== {system_content} ===") #최종 사용된 전체 프롬프트
+    print(f"=== {system_content} ===")  # 최종 사용된 전체 프롬프트
     print("===================")
     messages_to_send = (
-        [{"role": "system", "content": system_content},
-         {"role": "user", "content": message}]
-        if use_summary else
-        [{"role": "system", "content": system_content},
-         *history,
-         {"role": "user", "content": message}]
+        [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": message},
+        ]
+        if use_summary
+        else [
+            {"role": "system", "content": system_content},
+            *history,
+            {"role": "user", "content": message},
+        ]
     )
 
     response = groq_client.chat.completions.create(
         model="gpt-oss-120b",
         messages=messages_to_send,
         tools=[CRISIS_TOOL],
-        tool_choice="auto"
+        tool_choice="auto",
     )
     message_obj = response.choices[0].message
     is_crisis = False
@@ -346,14 +380,11 @@ async def process_chat(
     print(message_obj.tool_calls)
     print("======================")
 
-
     if message_obj.tool_calls:
-        
+
         is_crisis = True
 
-        args = json.loads(
-            message_obj.tool_calls[0].function.arguments
-        )
+        args = json.loads(message_obj.tool_calls[0].function.arguments)
 
         severity = args["severity"]
         category = args["category"]
@@ -363,18 +394,14 @@ async def process_chat(
         print("category =", category)
         print("reason =", reason)
 
-        print(
-            f"=== CRISIS TOOL === "
-            f"{severity} / {category} / {reason}"
-        )
+        print(f"=== CRISIS TOOL === " f"{severity} / {category} / {reason}")
 
         reply = get_crisis_response_message(severity)
-        
+
     else:
         reply = response.choices[0].message.content
 
-
-    print("=== REPLY CHECK ===", reply) #외국어 감지 필터 들어가기 전
+    print("=== REPLY CHECK ===", reply)  # 외국어 감지 필터 들어가기 전
     print("=== REPLY CHECK - 외국어감지 전 ===", contains_foreign(reply))
 
     # 6. 외국어 감지 (재생성 OFF - 테스트용)
@@ -394,7 +421,7 @@ async def process_chat(
         role="user",
         message_type="text",
         encrypted_content=ciphertext,
-        encryption_key_id=key_id
+        encryption_key_id=key_id,
     )
     db_sensitive.add(user_msg)
 
@@ -405,7 +432,7 @@ async def process_chat(
         role="assistant",
         message_type="text",
         encrypted_content=ciphertext,
-        encryption_key_id=key_id
+        encryption_key_id=key_id,
     )
     db_sensitive.add(ai_msg)
 
@@ -422,10 +449,14 @@ async def process_chat(
         )
 
     # 8. 감사 로그
-    await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", user_msg.id)
-    await log_sensitive(db_audit, current_user["user_id"], "CREATE", "CONVERSATION", ai_msg.id)
+    await log_sensitive(
+        db_audit, current_user["user_id"], "CREATE", "CONVERSATION", user_msg.id
+    )
+    await log_sensitive(
+        db_audit, current_user["user_id"], "CREATE", "CONVERSATION", ai_msg.id
+    )
 
     await db_sensitive.commit()
     await db_audit.commit()
 
-    return 
+    return reply

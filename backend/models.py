@@ -6,6 +6,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import declarative_base
+from services.personas import DEFAULT_PERSONA
 
 # ==========================================
 # Base 3개 분리 (DB별로 따로 관리)
@@ -153,7 +154,7 @@ class CounselingSession(BaseSensitive):
     # 한 세션에서 dict 수정하면 다른 세션 default도 오염됨.
     persona_type      = Column(
         JSONB,
-        default=lambda: {"code": "empathy"},
+        default=lambda: dict(DEFAULT_PERSONA),
         nullable=False,
     ) 
     started_at        = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -196,6 +197,7 @@ class Summary(BaseSensitive):
     core_topics        = Column(JSONB, nullable=True)        # 키워드 배열, 평문 유지
     prompt_adjustment  = Column(JSONB, nullable=True)        # 태그 배열, 평문 유지
     important_memory   = Column(JSONB, nullable=True)        # 장기 사실, 평문 유지 (향후 검토)
+
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     deleted_at         = Column(DateTime(timezone=True), nullable=True)   # 자동삭제(1년) soft delete 시각
 
