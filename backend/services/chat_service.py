@@ -248,6 +248,8 @@ async def process_chat(
             "risk_level": recent_summary.risk_level,
             "suicidal_mentioned": recent_summary.suicidal_mentioned,
             "persona_params": counseling_session.persona_type.get("params", {}),
+            "ai_name": counseling_session.persona_type.get("name", "다온"),
+            "talk_type": counseling_session.persona_type.get("talk_type", "존댓말"),
         }
 
         print("===== AGENT INPUT =====")
