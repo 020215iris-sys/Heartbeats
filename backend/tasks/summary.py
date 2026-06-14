@@ -94,3 +94,75 @@ async def _summarize_latest_active_session(user_id: str):
     finally:
         await sensitive_engine.dispose()
         await audit_engine.dispose()
+
+
+# ──────────────────────────────────────────
+# 특정 session_id 요약 (60분 타임아웃 경로용)
+# - chat_service의 동기 요약을 대체. 이미 닫힌 옛 세션 1건만 요약 생성.
+# - summarize_latest_active_session 과 달리 '최신 active'를 찾지 않으므로
+#   타임아웃 직후 새 세션을 만들어도 레이스가 없다.
+# ──────────────────────────────────────────
+@celery_app.task(name="tasks.summary.summarize_session")
+def summarize_session(session_id: str):
+    return asyncio.run(_summarize_session(session_id))
+
+
+async def _summarize_session(session_id: str):
+    from routers.counseling import close_session_with_summary
+
+    sensitive_engine = create_async_engine(
+        _async_db_url("DATABASE_URL_SENSITIVE"),
+        echo=True,
+        poolclass=NullPool,
+    )
+    audit_engine = create_async_engine(
+        _async_db_url("DATABASE_URL_AUDIT"),
+        echo=True,
+        poolclass=NullPool,
+    )
+
+    SensitiveSession = async_sessionmaker(
+        sensitive_engine,
+        expire_on_commit=False,
+    )
+    AuditSession = async_sessionmaker(
+        audit_engine,
+        expire_on_commit=False,
+    )
+
+    try:
+        async with SensitiveSession() as db_sensitive, AuditSession() as db_audit:
+            result = await db_sensitive.execute(
+                select(CounselingSession).where(
+                    CounselingSession.id == uuid.UUID(session_id),
+                    CounselingSession.deleted_at == None,
+                )
+            )
+            session = result.scalar()
+            if not session:
+                return {"status": "skipped", "reason": "not_found"}
+
+            await close_session_with_summary(session, db_sensitive, db_audit)
+
+            await db_sensitive.commit()
+            await db_audit.commit()
+
+            return {
+                "status": "ok",
+                "session_id": str(session.id),
+            }
+
+    except Exception:
+        try:
+            await db_sensitive.rollback()
+        except Exception:
+            pass
+        try:
+            await db_audit.rollback()
+        except Exception:
+            pass
+        raise
+
+    finally:
+        await sensitive_engine.dispose()
+        await audit_engine.dispose()
