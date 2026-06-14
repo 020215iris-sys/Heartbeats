@@ -256,8 +256,10 @@ class LogoutRequest(BaseModel):
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     body: LogoutRequest,
     db_general: AsyncSession = Depends(get_db_general),
+    db_audit: AsyncSession = Depends(get_db_audit),
 ):
     result = await db_general.execute(
         select(Session).where(
@@ -275,6 +277,17 @@ async def logout(
 
     # refresh_token revoke
     session.revoked_at = datetime.now(timezone.utc)
+
+    # 감사 로그: 로그인-로그아웃 짝 맞추기. ip_address는 Session 테이블과 동일 소스(request.client.host).
+    db_audit.add(AuditLogGeneral(
+        user_id=session.user_id,
+        action="LOGOUT",
+        resource_type="SESSION",
+        resource_id=session.id,
+        ip_address=request.client.host,
+    ))
+
     await db_general.commit()
+    await db_audit.commit()
 
     return {"message": "로그아웃 되었습니다."}
