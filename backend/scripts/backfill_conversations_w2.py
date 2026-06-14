@@ -17,6 +17,12 @@
 
     => 'AES256GCM_V1'만 보이면 백필 완료. 'DEV_PLAINTEXT_V1'이 남아있으면 재실행.
 """
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+
 import asyncio
 
 from sqlalchemy.future import select
@@ -26,7 +32,7 @@ from models import Conversation
 from core.crypto import encrypt_content, decrypt_content
 
 
-LEGACY_W1_KEY_ID = "DEV_PLAINTEXT_V1"
+LEGACY_PLAINTEXT_KEY_IDS = ["DEV_PLAINTEXT_V1", "none"]
 
 # 메모리 폭발 방지 — 한 번에 가져올 행 수
 BATCH_SIZE = 500
@@ -36,15 +42,15 @@ async def backfill():
     total_processed = 0
 
     async with SessionLocalSensitive() as db:
-        # 1. 옛 W1 행 갯수 먼저 확인
+        # 1. 옛 평문 행 갯수 먼저 확인 (W1 헬퍼 + default='none' 둘 다)
         count_result = await db.execute(
             select(Conversation).where(
-                Conversation.encryption_key_id == LEGACY_W1_KEY_ID
+                Conversation.encryption_key_id.in_(LEGACY_PLAINTEXT_KEY_IDS)
             )
         )
         all_rows = count_result.scalars().all()
         total = len(all_rows)
-        print(f"백필 대상: {total}건 (encryption_key_id='{LEGACY_W1_KEY_ID}')")
+        print(f"백필 대상: {total}건 (encryption_key_id in {LEGACY_PLAINTEXT_KEY_IDS})")
 
         if total == 0:
             print("처리할 W1 행 없음. 종료.")

@@ -48,7 +48,7 @@ _AESGCM = AESGCM(_KEY)
 
 # 라벨(key_id) — DB 행마다 어떤 키·알고리즘으로 잠갔는지 기록
 _CURRENT_KEY_ID = "AES256GCM_V1"
-_LEGACY_W1_KEY_ID = "DEV_PLAINTEXT_V1"   # W1 시기 옛 행 호환용
+_LEGACY_PLAINTEXT_KEY_IDS = {"DEV_PLAINTEXT_V1", "none"}
 _NONCE_BYTES = 12                          # AES-GCM 권장 nonce 길이
 
 
@@ -96,8 +96,8 @@ def decrypt_content(ciphertext: bytes, key_id: str) -> str:
 
     ciphertext = bytes(ciphertext)
 
-    # 옛 W1 행: UTF-8 평문이 그대로 들어있음
-    if key_id == _LEGACY_W1_KEY_ID:
+    # 옛 W1 행 (W1 헬퍼 또는 default='none'): UTF-8 평문이 그대로 들어있음
+    if key_id in _LEGACY_PLAINTEXT_KEY_IDS:
         return ciphertext.decode("utf-8")
 
     # 현재 W2 행: AES-256-GCM 복호화
@@ -109,5 +109,5 @@ def decrypt_content(ciphertext: bytes, key_id: str) -> str:
 
     raise ValueError(
         f"알 수 없는 encryption_key_id: '{key_id}'. "
-        f"지원: '{_CURRENT_KEY_ID}' (W2), '{_LEGACY_W1_KEY_ID}' (옛 W1)."
+        f"지원: '{_CURRENT_KEY_ID}' (W2), {sorted(_LEGACY_PLAINTEXT_KEY_IDS)} (옛 평문)."
     )
