@@ -367,6 +367,15 @@ async def process_chat(
     if persona_prompt:
         system_content += "\n\n" + persona_prompt
 
+    # ── 사용자 닉네임 (general·agent 공통, 매 요청 적용) ──
+    # AI 닉네임은 위 persona_prompt가 담당. 유저 닉네임은 여기서 결정적으로 주입해
+    # general(첫 대화)·agent(재상담) 양쪽이 항상 닉네임을 기억하도록 한다.
+    nickname = current_user.get("nickname", "사용자")
+    system_content += (
+        f"\n\n[사용자 정보]\n- 사용자의 닉네임은 '{nickname}'입니다. "
+        "사용자를 부를 때 이 닉네임을 사용하세요."
+    )
+
     # dirty-check: 프론트 persona가 DB와 다르면 UPDATE.
     # 브라우저 닫기·타임아웃으로 끝나도 마지막 값이 항상 DB에 남음.
     if persona is not None and counseling_session.persona_type != p:
