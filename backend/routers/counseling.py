@@ -73,8 +73,8 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         "core_topics": [],
         "next_session_notes": "",
         "prompt_adjustment": [],
+        "important_memory": [],
     }
-    important_memory = []
 
     def strip_code_block(text_value: str) -> str:
         text_value = (text_value or "").strip()
@@ -111,6 +111,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
             "core_topics": [],
             "next_session_notes": "",
             "prompt_adjustment": [],
+            "important_memory": [],
         }
 
         if not isinstance(data, dict):
@@ -144,13 +145,29 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         for m in messages
     ])
 
-    raw_output = ""
+    raw_output = None
 
     try:
         summary_result = request_summary(transcript)
-        print("=== SUMMARY RESULT RAW ===", summary_result)
+
+        print("=== SUMMARY RESULT RAW ===")
+        print(json.dumps(summary_result, ensure_ascii=False, indent=2))
+
         if isinstance(summary_result, dict):
-            raw_output = summary_result.get("output", "") or ""
+
+            if summary_result.get("success") is True:
+
+                raw_output = summary_result.get("output", {})
+
+            else:
+
+                print("=== SUMMARY FALLBACK USED ===")
+                print(summary_result.get("error"))
+
+                raw_output = summary_result.get("output", {})
+
+        else:
+            raw_output = {}
 
         print("=== SUMMARY ===")
         print(raw_output)
@@ -160,7 +177,7 @@ async def close_session_with_summary(session, db_sensitive, db_audit):
         print(str(e))
 
 # ===== After =====
-    if raw_output:
+    if raw_output is not None:
         parsed_summary = None
         cleaned_output = ""
 
@@ -260,6 +277,14 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
         print("=== RISK CLASSIFICATION FAILED ===")
         print(str(e))
 
+    # 최종 안전 장치
+    summary_data.setdefault("main_complaint", "")
+    summary_data.setdefault("risk_level", "low")
+    summary_data.setdefault("suicidal_mentioned", False)
+    summary_data.setdefault("core_topics", [])
+    summary_data.setdefault("next_session_notes", "")
+    summary_data.setdefault("prompt_adjustment", [])
+    summary_data.setdefault("important_memory", [])
 # W2 암호화: 평문을 BYTEA + key_id 짝으로 저장
     mc_bytes, mc_kid = encrypt_content(summary_data.get("main_complaint", "") or "")
     nsn_bytes, nsn_kid = encrypt_content(summary_data.get("next_session_notes", "") or "")
