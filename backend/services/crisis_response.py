@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
+from core.crypto import encrypt_content
+
 # -----------------------------------------------------------------------
 # 안내 문구 정의
 # severity에 따라 다른 문구 반환
@@ -64,6 +66,12 @@ async def save_crisis_event(
     """
     from sqlalchemy import text
 
+    # W3: action_taken 듀얼 라이트
+    # 현재는 "안내 문구 출력" 고정값이지만, 향후 보호자 번호·이름 등 PII가
+    # 들어갈 예정이므로 미리 암호화 인프라를 깔아둔다.
+    action_taken_plain = "안내 문구 출력"
+    at_bytes, at_kid = encrypt_content(action_taken_plain)
+
     query = text("""
         INSERT INTO crisis_events (
             id,
@@ -72,6 +80,8 @@ async def save_crisis_event(
             crisis_score,
             severity,
             action_taken,
+            action_taken_encrypted,
+            action_taken_key_id,
             guardian_notified,
             resolved,
             occurred_at
@@ -82,6 +92,8 @@ async def save_crisis_event(
             :crisis_score,
             :severity,
             :action_taken,
+            :action_taken_encrypted,
+            :action_taken_key_id,
             :guardian_notified,
             :resolved,
             :occurred_at
@@ -89,14 +101,16 @@ async def save_crisis_event(
     """)
 
     await db.execute(query, {
-        "id":                str(uuid.uuid4()),
-        "user_id":           user_id,
-        "conversation_id":   conversation_id,
-        "crisis_score":      SEVERITY_SCORE_MAP.get(severity, 0.6),
-        "severity":          severity,
-        "action_taken":      "안내 문구 출력",
-        "guardian_notified": False,   # 추후 보호자 알림 연동 시 변경
-        "resolved":          False,
-        "occurred_at":       datetime.now(timezone.utc),
+        "id":                     str(uuid.uuid4()),
+        "user_id":                user_id,
+        "conversation_id":        conversation_id,
+        "crisis_score":           SEVERITY_SCORE_MAP.get(severity, 0.6),
+        "severity":                severity,
+        "action_taken":            action_taken_plain,   # 옛 평문 (듀얼 라이트)
+        "action_taken_encrypted":  at_bytes,             # W3
+        "action_taken_key_id":     at_kid,               # W3
+        "guardian_notified":       False,
+        "resolved":                False,
+        "occurred_at":             datetime.now(timezone.utc),
     })
     await db.commit()

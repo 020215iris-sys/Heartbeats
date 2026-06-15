@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db_sensitive
 from core.security import get_current_user
 from models import CategoryCatalog, Classification, ClassificationResult
+from core.crypto import encrypt_json, decrypt_json
 from questionnaires import (
     ACTIVE_INSTRUMENT,
     calculate_scores,
@@ -113,10 +114,16 @@ async def submit_active_survey(
         deltas[code] = (score - prev) if prev is not None else None
 
     # 4) classifications 1행
+    # W3: compound_flags 듀얼 라이트
+    cf_value = {"follow_ups": follow_ups}
+    cf_bytes, cf_kid = encrypt_json(cf_value)
+
     classification = Classification(
         user_id=user_uuid,
-        compound_flags={"follow_ups": follow_ups},
-        selected_prompt_key=None,   # 상담 라우터가 이후 결정
+        compound_flags=cf_value,                       # 옛 평문 (듀얼 라이트)
+        compound_flags_encrypted=cf_bytes,             # W3
+        compound_flags_key_id=cf_kid,                  # W3
+        selected_prompt_key=None,                       # 상담 라우터가 이후 결정
     )
     db.add(classification)
     await db.flush()                # classification.id 확보
@@ -124,12 +131,17 @@ async def submit_active_survey(
     # 5) classification_results 카테고리당 1행
     for code, score in scores.items():
         cat = catalog[code]
+        # W3: responses 듀얼 라이트
+        resp_value = resp_by_cat[code]
+        resp_bytes, resp_kid = encrypt_json(resp_value)
         db.add(ClassificationResult(
             classification_id=classification.id,
             category_code=code,
             instrument=cat.instrument,
             instrument_ver=cat.instrument_ver,
-            responses=resp_by_cat[code],
+            responses=resp_value,                       # 옛 평문 (듀얼 라이트)
+            responses_encrypted=resp_bytes,             # W3
+            responses_key_id=resp_kid,                  # W3
             total_score=score,
             severity=severities[code]["code"],
             score_delta=deltas[code],
@@ -167,9 +179,19 @@ async def get_classification(
             ClassificationResult.deleted_at.is_(None),
         )
     )).scalars().all()
+    def _w3_or_legacy(enc_blob, key_id, legacy):
+        """W3 우선 → 실패/없으면 옛 평문 JSONB."""
+        if enc_blob is not None:
+            decoded = decrypt_json(enc_blob, key_id)
+            if decoded is not None:
+                return decoded
+        return legacy
+
     return {
         "classification_id": str(cls.id),
-        "compound_flags": cls.compound_flags,
+        "compound_flags": _w3_or_legacy(
+            cls.compound_flags_encrypted, cls.compound_flags_key_id, cls.compound_flags
+        ),
         "created_at": cls.created_at.isoformat(),
         "results": [
             {
@@ -179,7 +201,9 @@ async def get_classification(
                 "total_score": r.total_score,
                 "severity": r.severity,
                 "score_delta": r.score_delta,
-                "responses": r.responses,
+                "responses": _w3_or_legacy(
+                    r.responses_encrypted, r.responses_key_id, r.responses
+                ),
             }
             for r in rows
         ],
