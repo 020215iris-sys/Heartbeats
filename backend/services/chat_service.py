@@ -12,7 +12,7 @@ from models import Conversation, CounselingSession, Summary, Classification, Cla
 from core.security import verify_access_token
 from core.crypto import encrypt_content, decrypt_content
 from routers.counseling import close_session_with_summary
-from services.personas import normalize_persona, DEFAULT_PERSONA
+from services.personas import normalize_persona
 from services.persona_service import build_persona_prompt
 from services.audit_service import log_sensitive
 from services.crisis_response import get_crisis_response_message, save_crisis_event
@@ -78,6 +78,7 @@ def contains_foreign(text: str) -> bool:
 # ─────────────────────────────────────────
 async def load_classification_results(user_id, db_sensitive) -> list[dict]:
     """사용자의 '가장 최근' 설문(Classification)의 결과 행들을 dict 리스트로 반환.
+
     설문 이력이 없으면 빈 리스트.
     재대화/첫대화 모두 항상 최신 설문 상태를 반영하기 위해 user_id 기준으로 조회한다."""
     # 1) 해당 사용자의 가장 최근 설문 한 건 조회
@@ -228,15 +229,15 @@ async def process_chat(
 
     # 4. system_prompt 결정
     summary_result = await db_sensitive.execute(
-        select(Summary)
-        .where(
-            Summary.user_id == uuid.UUID(current_user["user_id"]),
-            Summary.deleted_at.is_(None),
+            select(Summary)
+            .where(
+                Summary.user_id == uuid.UUID(current_user["user_id"]),
+                Summary.deleted_at.is_(None),
+            )
+            .order_by(Summary.created_at.desc())
+            .limit(3)
         )
-        .order_by(Summary.created_at.desc())
-        .limit(1)
-    )
-    recent_summary = summary_result.scalar()
+    recent_summaries = summary_result.scalars().all() 
 
     cache_key = str(counseling_session.id)
 
@@ -244,7 +245,7 @@ async def process_chat(
         system_content = SESSION_PROMPT_CACHE[cache_key]
         print("=== PROMPT: 캐시 사용 ===")
 
-    elif recent_summary:
+    elif recent_summaries:
         # 재상담: Agent가 요약 기반으로 system_prompt 생성
         # W2 복호화: main_complaint / next_session_notes는 BYTEA → 평문으로 풀어 Agent에 전달
         def _safe_decrypt(blob, kid):
@@ -258,22 +259,23 @@ async def process_chat(
         prompt_agent_input = {
             "nickname": current_user.get("nickname", "사용자"),
             "classification_results": classification_results,
-            "summary": {
-                "main_complaint": _safe_decrypt(
-                    recent_summary.main_complaint_encrypted,
-                    recent_summary.main_complaint_key_id,
-                ),
-                "core_topics": recent_summary.core_topics,
-                "next_session_notes": _safe_decrypt(
-                    recent_summary.next_session_notes_encrypted,
-                    recent_summary.next_session_notes_key_id,
-                ),
-
-                "prompt_adjustment": recent_summary.prompt_adjustment,
-                "important_memory": recent_summary.important_memory,
-            },
-            "risk_level": recent_summary.risk_level,
-            "suicidal_mentioned": recent_summary.suicidal_mentioned,
+            "past_summaries": [
+                {
+                    "main_complaint": _safe_decrypt(
+                        s.main_complaint_encrypted, s.main_complaint_key_id
+                    ),
+                    "core_topics": s.core_topics,
+                    "next_session_notes": _safe_decrypt(
+                        s.next_session_notes_encrypted, s.next_session_notes_key_id
+                    ),
+                    "prompt_adjustment": s.prompt_adjustment,
+                    "important_memory": s.important_memory,
+                    "risk_level": s.risk_level,
+                    "suicidal_mentioned": s.suicidal_mentioned,
+                    "created_at": s.created_at.isoformat(),
+                }
+                for s in recent_summaries
+            ],
             "persona_params": counseling_session.persona_type.get("params", {}),
             "ai_name": counseling_session.persona_type.get("name", "다온"),
             "talk_type": counseling_session.persona_type.get("talk_type", "존댓말"),
