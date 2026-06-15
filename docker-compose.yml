@@ -154,6 +154,26 @@ services:
 
 
 
+
+  frontend:
+    profiles: ["prod"]
+    build: ./frontend
+    container_name: heartbeat_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    env_file:
+      - ./frontend/.env
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    networks:
+      - heartbeat_net
+
+
+
+
   # ===========================================
   # Celery Worker: 비동기 태스크 처리
   # - api와 같은 Dockerfile/코드를 사용 (FastAPI와 코드 공유)
