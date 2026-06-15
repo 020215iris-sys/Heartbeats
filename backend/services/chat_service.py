@@ -293,11 +293,32 @@ async def process_chat(
         )
         print("=== PROMPT: 재상담 - Agent 생성 ===")
         raw = agent_response.choices[0].message.content.strip()
+
         if raw.startswith("```"):
             raw = raw.strip("`").strip()
             if raw[:4].lower() == "json":
                 raw = raw[4:].strip()
-        agent_result = json.loads(raw)
+
+        try:
+            start = raw.find("{")
+            end = raw.rfind("}")
+
+            if start != -1 and end > start:
+                raw = raw[start:end + 1]
+
+            agent_result = json.loads(raw)
+
+        except Exception as e:
+            print("=== AGENT JSON PARSE FAILED ===")
+            print(raw)
+            print(str(e))
+
+            agent_result = {
+                "system_prompt": (
+                    "사용자의 현재 감정과 고민을 탐색하고 "
+                    "공감적 태도로 대화를 이어간다."
+                )
+            }
 
         # 추가
         print("=== AGENT PARSED ===")
