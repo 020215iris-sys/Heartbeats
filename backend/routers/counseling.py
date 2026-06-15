@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 from datetime import datetime, timezone
 from core.security import get_current_user
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 import uuid
 import json
 import os
@@ -34,15 +34,25 @@ async def chat(
     db_audit: AsyncSession = Depends(get_db_audit),
 ):
     from services.chat_service import process_chat
-    reply = await process_chat(
-        message=body.message,
-        session_id=body.session_id,
-        history=body.history,
-        persona=body.persona,
-        token=authorization,
-        db_sensitive=db_sensitive,
-        db_audit=db_audit,
-    )
+    try:
+        reply = await process_chat(
+            message=body.message,
+            session_id=body.session_id,
+            history=body.history,
+            persona=body.persona,
+            token=authorization,
+            db_sensitive=db_sensitive,
+            db_audit=db_audit,
+        )
+    except RateLimitError:
+        # LLM(Cerebras) 접속량 초과(429) → 500이 아니라 429로 명시해서 내려줌.
+        # 프론트는 429일 때 "접속량이 많습니다" 안내 문구를 노출한다.
+        await db_sensitive.rollback()
+        await db_audit.rollback()
+        raise HTTPException(
+            status_code=429,
+            detail="접속량이 많습니다. 잠시 후에 시도해주세요.",
+        )
     return {"reply": reply}
 
 groq_client = OpenAI(
