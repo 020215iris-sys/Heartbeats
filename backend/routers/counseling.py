@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional
-from database import get_db_sensitive, get_db_audit
-from models import CounselingSession, Conversation, CrisisEvent, AuditLogSensitive, Summary
+from database import get_db_sensitive, get_db_audit, get_db_general
+from models import CounselingSession, Conversation, CrisisEvent, AuditLogSensitive, Summary, GuardianInvite
 from sqlalchemy.future import select
 from sqlalchemy import func
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from core.security import get_current_user
 from openai import OpenAI, RateLimitError
 import uuid
@@ -437,6 +437,7 @@ class StartSessionRequest(BaseModel):
 @router.post("/sessions")
 async def start_session(
     body: StartSessionRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     db_sensitive: AsyncSession = Depends(get_db_sensitive),
     db_audit: AsyncSession = Depends(get_db_audit)
@@ -453,7 +454,16 @@ async def start_session(
         )
         old_session = existing.scalar()
         if old_session:
-            await close_session_with_summary(old_session, db_sensitive, db_audit)
+            # 닫기만 동기로 빠르게, 무거운 요약(request_summary)은 Celery 백그라운드로 분리
+            # (60분 타임아웃 경로 chat_service.py 205~212줄과 동일한 패턴)
+            from services.chat_service import SESSION_PROMPT_CACHE
+            from tasks.summary import summarize_session
+
+            SESSION_PROMPT_CACHE.pop(str(old_session.id), None)
+            old_session.ended_at = datetime.now(timezone.utc)
+            old_session.is_active = False
+            await db_sensitive.flush()
+            summarize_session.delay(str(old_session.id))
 
         # ↓↓↓ ★ 여기 (new_session 생성 직전) ★ ↓↓↓
         # ───────── 페르소나 정규화 + 스냅샷 페이로드 빌드 ─────────
@@ -481,6 +491,15 @@ async def start_session(
 
         await db_sensitive.commit()
         await db_audit.commit()
+        
+        from services.chat_service import prewarm_session_prompt
+        background_tasks.add_task(
+            prewarm_session_prompt,
+            str(new_session.id),
+            str(new_session.user_id),
+            current_user.get("nickname", "사용자"),
+            new_session.persona_type,
+        )
 
         return {
             "session_id": str(new_session.id),
@@ -729,3 +748,128 @@ async def end_session(
         await db_sensitive.rollback()
         await db_audit.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+KST = timezone(timedelta(hours=9))
+_LEVEL_RANK = {"low": 0, "medium": 1, "high": 2, "crisis": 3}
+
+
+def _kst_date(dt) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(KST).date().isoformat()
+
+async def _resolve_target_user_id(current_user, ward_id, db_general) -> str:
+    """ward_id 없으면 본인. 있으면 보호자 권한 + 연결(accepted) 확인 후 ward 반환."""
+    if not ward_id:
+        return current_user["user_id"]
+    if current_user.get("role") != "guardian":
+        raise HTTPException(status_code=403, detail="권한이 없습니다.")
+    link = await db_general.execute(
+        select(GuardianInvite.id).where(
+            GuardianInvite.guardian_user_id == uuid.UUID(current_user["user_id"]),
+            GuardianInvite.ward_user_id == uuid.UUID(ward_id),
+            GuardianInvite.status == "accepted",
+            GuardianInvite.revoked_at.is_(None),
+        )
+    )
+    if link.first() is None:
+        raise HTTPException(status_code=403, detail="연결된 피보호자가 아닙니다.")
+    return ward_id
+
+@router.get("/dashboard/calendar")
+async def dashboard_calendar(
+    month: str = Query(..., description="YYYY-MM"),
+    current_user: dict = Depends(get_current_user),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    ward_id: str | None = Query(None),
+    db_general: AsyncSession = Depends(get_db_general),
+):
+    """월별 일자별 레벨(low/medium/high/crisis) — 본인 데이터 기준."""
+    try:
+        y, m = map(int, month.split("-"))
+        start_kst = datetime(y, m, 1, tzinfo=KST)
+        end_kst = datetime(y + (m == 12), (m % 12) + 1, 1, tzinfo=KST)
+    except Exception:
+        raise HTTPException(status_code=400, detail="month는 'YYYY-MM' 형식이어야 합니다.")
+
+    start_utc = start_kst.astimezone(timezone.utc)
+    end_utc = end_kst.astimezone(timezone.utc)
+    uid = uuid.UUID(await _resolve_target_user_id(current_user, ward_id, db_general))
+    days: dict[str, str] = {}
+
+    def bump(d_key: str, level: str):
+        if d_key not in days or _LEVEL_RANK[level] > _LEVEL_RANK[days[d_key]]:
+            days[d_key] = level
+
+    rows = await db_sensitive.execute(
+        select(Summary.created_at, Summary.risk_level).where(
+            Summary.user_id == uid,
+            Summary.deleted_at.is_(None),
+            Summary.created_at >= start_utc,
+            Summary.created_at < end_utc,
+        )
+    )
+    for created_at, risk in rows.all():
+        lvl = (risk or "low").lower()
+        if lvl not in _LEVEL_RANK:
+            lvl = "low"
+        bump(_kst_date(created_at), lvl)
+
+    crows = await db_sensitive.execute(
+        select(CrisisEvent.occurred_at).where(
+            CrisisEvent.user_id == uid,
+            CrisisEvent.occurred_at >= start_utc,
+            CrisisEvent.occurred_at < end_utc,
+        )
+    )
+    for (occurred_at,) in crows.all():
+        bump(_kst_date(occurred_at), "crisis")
+
+    return {"month": month, "days": days}
+
+@router.get("/dashboard/day")
+async def dashboard_day(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    current_user: dict = Depends(get_current_user),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    ward_id: str | None = Query(None),
+    db_general: AsyncSession = Depends(get_db_general),
+):
+    """특정 날짜의 요약 한 줄 목록(+세션 id) — 본인 데이터 기준."""
+    try:
+        y, mo, d = map(int, date.split("-"))
+        start_kst = datetime(y, mo, d, tzinfo=KST)
+        end_kst = start_kst + timedelta(days=1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="date는 'YYYY-MM-DD' 형식이어야 합니다.")
+
+    start_utc = start_kst.astimezone(timezone.utc)
+    end_utc = end_kst.astimezone(timezone.utc)
+    uid = uuid.UUID(await _resolve_target_user_id(current_user, ward_id, db_general))
+
+    rows = await db_sensitive.execute(
+        select(Summary)
+        .where(
+            Summary.user_id == uid,
+            Summary.deleted_at.is_(None),
+            Summary.created_at >= start_utc,
+            Summary.created_at < end_utc,
+        )
+        .order_by(Summary.created_at.asc())
+    )
+
+    items = []
+    for s in rows.scalars().all():
+        try:
+            mc = decrypt_content(s.main_complaint_encrypted, s.main_complaint_key_id) \
+                 if s.main_complaint_encrypted else ""
+        except Exception:
+            mc = ""
+        items.append({
+            "session_id": str(s.session_id),
+            "summary": mc,
+            "risk_level": (s.risk_level or "low").lower(),
+            "created_at": s.created_at.isoformat(),
+        })
+
+    return {"date": date, "items": items}

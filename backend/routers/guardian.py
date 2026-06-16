@@ -7,10 +7,11 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from ..services import api_client
 
 from database import get_db_general
 from core.security import get_current_user
-from models import GuardianInvite
+from models import GuardianInvite, User
 
 router = APIRouter(prefix="/guardian", tags=["Guardian"])
 
@@ -62,3 +63,23 @@ async def create_invite(
     await db.commit()
 
     return {"code": code, "expires_at": expires_at.isoformat()}
+
+@router.get("/wards")
+async def list_wards(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_general),
+):
+    """보호자가 연결된 피보호자(ward) 목록. status=accepted, 미해제."""
+    if current_user.get("role") != "guardian":
+        raise HTTPException(403, "보호자 전용입니다.")
+    rows = await db.execute(
+        select(User.id, User.nickname)
+        .join(GuardianInvite, GuardianInvite.ward_user_id == User.id)
+        .where(
+            GuardianInvite.guardian_user_id == uuid.UUID(current_user["user_id"]),
+            GuardianInvite.status == "accepted",
+            GuardianInvite.revoked_at.is_(None),
+            User.deleted_at.is_(None),
+        )
+    )
+    return {"wards": [{"ward_id": str(wid), "nickname": nick} for wid, nick in rows.all()]}

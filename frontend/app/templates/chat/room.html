@@ -22,7 +22,7 @@
 <div class="mx-auto max-w-2xl">
 
   {# ============ 1. 캐릭터 헤더 ============ #}
-  <div class="bg-white border-b border-slate-200 px-4 py-3
+  <div class="sticky top-20 z-20 bg-white border-b border-slate-200 px-4 py-3
               sm:rounded-xl sm:my-4 sm:border">
     <div class="flex items-center gap-3">
 
@@ -433,6 +433,12 @@
   const err = document.getElementById('err-message');
   let isSubmitting = false;
 
+  // 채팅방 로드 직후 세션을 백그라운드로 준비 (페이지 렌더는 안 막음)
+  fetch('{{ url_for("chat.prepare_session") }}', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
+  }).catch(() => {});
+  
   function focusMessageInput() {
     const modal = document.getElementById('signup-modal');
     if (!textarea || modal) return;

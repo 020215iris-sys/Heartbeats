@@ -201,3 +201,17 @@ def clear():
     session.pop("chat_session_id", None)
     flash("대화가 초기화되었어요.", "info")
     return redirect(url_for("chat.room"))
+
+@bp.route("/prepare-session", methods=["POST"])
+def prepare_session():
+    """채팅방 로드 직후 JS가 백그라운드로 호출 — 세션 미리 생성(+백엔드 프리워밍 트리거)."""
+    if "access_token" not in session:
+        return jsonify({"ok": False}), 401
+    # 이미 진행 중인 세션이 있으면 재생성 안 함
+    if "chat_session_id" in session:
+        return jsonify({"ok": True, "session_id": session["chat_session_id"]})
+    sid = api_client.start_counseling_session(session.get("persona"))
+    if sid:
+        session["chat_session_id"] = sid
+        return jsonify({"ok": True, "session_id": sid})
+    return jsonify({"ok": False})   # 실패해도 첫 메시지 lazy 폴백

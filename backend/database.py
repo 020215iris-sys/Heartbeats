@@ -14,9 +14,9 @@ SENSITIVE_DB_URL = os.getenv("DATABASE_URL_SENSITIVE").replace("postgresql://", 
 AUDIT_DB_URL = os.getenv("DATABASE_URL_AUDIT").replace("postgresql://", "postgresql+asyncpg://")
 
 # 2. 각각의 엔진 생성
-engine_general = create_async_engine(GENERAL_DB_URL, echo=True)
-engine_sensitive = create_async_engine(SENSITIVE_DB_URL, echo=True)
-engine_audit = create_async_engine(AUDIT_DB_URL, echo=True)
+engine_general = create_async_engine(GENERAL_DB_URL,     echo=False)
+engine_sensitive = create_async_engine(SENSITIVE_DB_URL, echo=False)
+engine_audit = create_async_engine(AUDIT_DB_URL,         echo=False)
 
 # 3. 세션 메이커 생성
 SessionLocalGeneral = sessionmaker(engine_general, class_=AsyncSession, expire_on_commit=False)

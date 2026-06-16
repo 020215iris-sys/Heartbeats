@@ -32,6 +32,35 @@
         </div>
     </section>
 
+    {# ===== 감정 달력 ===== #}
+    <section class="mb-6">
+        <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="mb-3 flex items-center justify-between">
+                <h2 id="cal-title" class="text-base font-bold text-slate-900"></h2>
+                <div class="flex items-center gap-1">
+                    <button type="button" onclick="calMove(-1)"
+                        class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">‹</button>
+                    <button type="button" onclick="calToday()"
+                        class="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">오늘</button>
+                    <button type="button" onclick="calMove(1)"
+                        class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">›</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-7 text-center text-xs font-medium text-slate-400">
+                <div class="py-1 text-red-400">일</div>
+                <div class="py-1">월</div>
+                <div class="py-1">화</div>
+                <div class="py-1">수</div>
+                <div class="py-1">목</div>
+                <div class="py-1">금</div>
+                <div class="py-1 text-blue-400">토</div>
+            </div>
+            <div id="cal-grid" class="grid grid-cols-7 border-l border-t border-slate-100"></div>
+            <div class="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-slate-500">
+                <span>☀️ 양호</span><span>☁️ 보통</span><span>🌧️ 주의</span><span>⛈️ 위기</span>
+            </div>
+        </div>
+    </section>
     {# ===== 초대 모달 ===== #}
     <div id="inviteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
         <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
@@ -68,8 +97,105 @@
     </div>
 
 </div>
-
+{# ===== 날짜 상세 모달 ===== #}
+<div id="dayModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4"
+    onclick="if(event.target===this) closeDayModal()">
+    <div class="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between">
+            <h2 id="dayModalTitle" class="text-lg font-bold text-slate-900"></h2>
+            <button type="button" onclick="closeDayModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div id="dayModalBody" class="mt-4 space-y-3 overflow-y-auto"></div>
+    </div>
+</div>
 <script>
+
+    const CAL_EMOJI = { low: "☀️", medium: "☁️", high: "🌧️", crisis: "⛈️" };
+    let calY, calM, calDays = {};
+
+    function calToday() { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth() + 1; renderCalendar(); }
+    function calMove(delta) {
+        calM += delta;
+        if (calM < 1) { calM = 12; calY--; } else if (calM > 12) { calM = 1; calY++; }
+        renderCalendar();
+    }
+
+    async function renderCalendar() {
+        const monthStr = `${calY}-${String(calM).padStart(2, "0")}`;
+        document.getElementById("cal-title").textContent = `${calY}년 ${calM}월`;
+
+        let days = {};
+        try {
+            const res = await fetch(`{{ url_for('dashboard.calendar') }}?month=${monthStr}`);
+            if (res.ok) days = (await res.json()).days || {};
+        } catch (e) { }
+
+        calDays = days;
+
+        const grid = document.getElementById("cal-grid");
+        grid.innerHTML = "";
+        const firstDow = new Date(calY, calM - 1, 1).getDay();   // 일=0
+        const total = new Date(calY, calM, 0).getDate();
+        const today = new Date();
+        const isThisMonth = today.getFullYear() === calY && today.getMonth() + 1 === calM;
+        const rows = Math.ceil((firstDow + total) / 7) * 7;
+
+        for (let i = 0; i < rows; i++) {
+            const dayNum = i - firstDow + 1;
+            const cell = document.createElement("div");
+            cell.className = "min-h-[72px] border-r border-b border-slate-100 p-1.5";
+            if (dayNum >= 1 && dayNum <= total) {
+                const ds = `${monthStr}-${String(dayNum).padStart(2, "0")}`;
+                const isToday = isThisMonth && dayNum === today.getDate();
+                const numCls = isToday
+                    ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white text-xs font-semibold"
+                    : "text-xs text-slate-500";
+                cell.innerHTML =
+                    `<div class="${numCls}">${dayNum}</div>` +
+                    `<div class="mt-1 text-center text-2xl leading-none">${CAL_EMOJI[days[ds]] || ""}</div>`;
+                cell.classList.add("cursor-pointer", "hover:bg-slate-50");
+                cell.onclick = () => openDayModal(ds);
+            }
+            grid.appendChild(cell);
+        }
+    }
+    document.addEventListener("DOMContentLoaded", calToday);
+    const RISK_LABEL = { low: "☀️ 양호", medium: "☁️ 보통", high: "🌧️ 주의", crisis: "⛈️ 위기" };
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c =>
+            ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    function closeDayModal() {
+        const m = document.getElementById("dayModal");
+        m.classList.add("hidden"); m.classList.remove("flex");
+    }
+    async function openDayModal(dateStr) {
+        const modal = document.getElementById("dayModal");
+        const prefix = calDays[dateStr] === "crisis" ? "⛈️ " : "";
+        document.getElementById("dayModalTitle").textContent = prefix + dateStr;
+        const body = document.getElementById("dayModalBody");
+        body.innerHTML = `<p class="text-sm text-slate-400">불러오는 중…</p>`;
+        modal.classList.remove("hidden"); modal.classList.add("flex");
+
+        let items = [];
+        try {
+            const res = await fetch(`{{ url_for('dashboard.day') }}?date=${dateStr}`);
+            if (res.ok) items = (await res.json()).items || [];
+        } catch (e) { }
+
+        if (!items.length) {
+            body.innerHTML = `<p class="text-sm text-slate-500">이 날의 상담 기록이 없어요.</p>`;
+            return;
+        }
+        body.innerHTML = items.map(it => `
+            <div class="rounded-xl border border-slate-200 p-3">
+                <div class="text-xs text-slate-400">${RISK_LABEL[it.risk_level] || ""}</div>
+                <p class="mt-1 text-sm text-slate-800">${it.summary ? escapeHtml(it.summary) : "(요약 없음)"}</p>
+                <button type="button" onclick="closeDayModal(); openHistoryModal('${it.session_id}')"
+                    class="mt-2 text-xs font-medium text-brand-600 hover:text-brand-700">채팅 보기 →</button>
+            </div>`).join("");
+    }
     const nickname = {{ (current_user.nickname or current_user.email or "사용자") | tojson }};
     const CSRF_TOKEN = {{ csrf_token() | tojson }};
 
@@ -98,7 +224,7 @@
         m.classList.add("hidden");
         m.classList.remove("flex");
     }
-        function copyInvite() {
+    function copyInvite() {
         const text = document.getElementById("inviteMessage").value;
         if (!text) return;
         navigator.clipboard.writeText(text).then(() => {

@@ -163,6 +163,83 @@ def send_chat_message(user_message: str, history: list, user_id: str | None, per
         pass
     return "현재 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요."
 
+def start_counseling_session(persona: dict | None = None) -> str | None:
+    """채팅방 진입 시 상담 세션 시작. POST /counseling/sessions → 생성된 session_id 반환.
+    미로그인/실패 시 None (그 경우 호출부는 기존 lazy 생성으로 폴백)."""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    try:
+        res = requests.post(
+            f"{_base_url()}/counseling/sessions",
+            json={"persona_type": persona},   # StartSessionRequest.persona_type
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+        if res.ok:
+            return res.json().get("session_id")
+    except requests.RequestException:
+        pass
+    return None
+
+def get_calendar(month: str, ward_id: str | None = None) -> dict | None:
+    """월별 달력 레벨 데이터. GET /counseling/dashboard/calendar?month=YYYY-MM[&ward_id=]"""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    params = {"month": month}
+    if ward_id:
+        params["ward_id"] = ward_id
+    try:
+        res = requests.get(
+            f"{_base_url()}/counseling/dashboard/calendar",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
+
+def get_day(date: str, ward_id: str | None = None) -> dict | None:
+    """특정 날짜 요약 상세. GET /counseling/dashboard/day?date=YYYY-MM-DD[&ward_id=]"""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    params = {"date": date}
+    if ward_id:
+        params["ward_id"] = ward_id
+    try:
+        res = requests.get(
+            f"{_base_url()}/counseling/dashboard/day",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
+
+def get_wards() -> list:
+    """보호자가 연결된 피보호자 목록. GET /guardian/wards"""
+    token = flask_session.get("access_token")
+    if not token:
+        return []
+    try:
+        res = requests.get(
+            f"{_base_url()}/guardian/wards",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json().get("wards", [])
+    except requests.RequestException:
+        pass
+    return []
 
 def get_active_survey() -> dict | None:
     """백엔드에서 활성 설문 정의 조회. GET /surveys/active"""

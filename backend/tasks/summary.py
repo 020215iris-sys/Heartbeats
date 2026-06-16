@@ -31,12 +31,12 @@ async def _summarize_latest_active_session(user_id: str):
 
     sensitive_engine = create_async_engine(
         _async_db_url("DATABASE_URL_SENSITIVE"),
-        echo=True,
+        echo=False,
         poolclass=NullPool,
     )
     audit_engine = create_async_engine(
         _async_db_url("DATABASE_URL_AUDIT"),
-        echo=True,
+        echo=False,
         poolclass=NullPool,
     )
 
@@ -112,12 +112,12 @@ async def _summarize_session(session_id: str):
 
     sensitive_engine = create_async_engine(
         _async_db_url("DATABASE_URL_SENSITIVE"),
-        echo=True,
+        echo=False,
         poolclass=NullPool,
     )
     audit_engine = create_async_engine(
         _async_db_url("DATABASE_URL_AUDIT"),
-        echo=True,
+        echo=False,
         poolclass=NullPool,
     )
 

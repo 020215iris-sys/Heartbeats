@@ -3,15 +3,16 @@ import re
 import random
 import uuid
 import json
+import asyncio
 from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import NullPool
 from sqlalchemy.future import select
 from models import Conversation, CounselingSession, Summary, Classification, ClassificationResult
 from core.security import verify_access_token
 from core.crypto import encrypt_content, decrypt_content, decrypt_json
-from routers.counseling import close_session_with_summary
 from services.personas import normalize_persona
 from services.persona_service import build_persona_prompt
 from services.audit_service import log_sensitive
@@ -146,6 +147,186 @@ def build_classification_prompt(results: list[dict]) -> str:
         )
     return "\n".join(lines)
 
+async def build_base_system_prompt(
+    user_id: str,
+    nickname: str,
+    session_id: str,
+    persona_type: dict,
+    db_sensitive: AsyncSession,
+) -> str:
+    """세션의 base system_content 생성 후 SESSION_PROMPT_CACHE에 적재·반환.
+    이미 캐시에 있으면 그대로 반환(재생성 안 함). process_chat·프리워밍 공용."""
+    cache_key = str(session_id)
+    if cache_key in SESSION_PROMPT_CACHE:
+        return SESSION_PROMPT_CACHE[cache_key]
+
+    classification_results = await load_classification_results(user_id, db_sensitive)
+
+    summary_result = await db_sensitive.execute(
+        select(Summary)
+        .where(
+            Summary.user_id == uuid.UUID(user_id),
+            Summary.deleted_at.is_(None),
+        )
+        .order_by(Summary.created_at.desc())
+        .limit(3)
+    )
+    recent_summaries = summary_result.scalars().all()
+
+    if recent_summaries:
+        # 재상담: Agent가 요약 기반으로 system_prompt 생성
+        # W2 복호화: main_complaint / next_session_notes는 BYTEA → 평문으로 풀어 Agent에 전달
+        def _safe_decrypt(blob, kid):
+            try:
+                if blob is None:
+                    return ""
+                return decrypt_content(blob, kid)
+            except Exception:
+                return ""
+
+        def _read_jsonb_w3(enc_blob, key_id, legacy_value, default):
+            """W3 암호화 우선. 없거나 복호화 실패면 옛 평문 JSONB로 fallback.
+            마이그레이션 중간 상태(옛 행은 새 컬럼 NULL)에서도 안전."""
+            if enc_blob is not None:
+                decoded = decrypt_json(enc_blob, key_id)
+                if decoded is not None:
+                    return decoded
+            return legacy_value if legacy_value is not None else default
+
+        prompt_agent_input = {
+            "nickname": nickname,
+            "classification_results": classification_results,
+            "past_summaries": [
+                {
+                    "main_complaint": _safe_decrypt(
+                        s.main_complaint_encrypted, s.main_complaint_key_id
+                    ),
+                    "core_topics": _read_jsonb_w3(
+                        s.core_topics_encrypted, s.core_topics_key_id, s.core_topics, []
+                    ),
+                    "next_session_notes": _safe_decrypt(
+                        s.next_session_notes_encrypted, s.next_session_notes_key_id
+                    ),
+                    "prompt_adjustment": s.prompt_adjustment,   # 평문 유지
+                    "important_memory": _read_jsonb_w3(
+                        s.important_memory_encrypted, s.important_memory_key_id, s.important_memory, []
+                    ),
+                    "risk_level": s.risk_level,
+                    "suicidal_mentioned": s.suicidal_mentioned,
+                    "created_at": s.created_at.isoformat(),
+                }
+                for s in recent_summaries
+            ],
+            "persona_params": persona_type.get("params", {}),
+            "ai_name": persona_type.get("name", "다온"),
+            "talk_type": persona_type.get("talk_type", "존댓말"),
+        }
+
+        print("===== AGENT INPUT =====")
+        print(json.dumps(prompt_agent_input, ensure_ascii=False, indent=2))
+        agent_response = groq_client.chat.completions.create(
+            model="gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": AGENT_PROMPT},
+                {
+                    "role": "user",
+                    "content": json.dumps(prompt_agent_input, ensure_ascii=False),
+                },
+            ],
+        )
+        print("=== PROMPT: 재상담 - Agent 생성 ===")
+        raw = agent_response.choices[0].message.content.strip()
+
+        if raw.startswith("```"):
+            raw = raw.strip("`").strip()
+            if raw[:4].lower() == "json":
+                raw = raw[4:].strip()
+
+        try:
+            start = raw.find("{")
+            end = raw.rfind("}")
+
+            if start != -1 and end > start:
+                raw = raw[start:end + 1]
+
+            agent_result = json.loads(raw)
+
+        except Exception as e:
+            print("=== AGENT JSON PARSE FAILED ===")
+            print(raw)
+            print(str(e))
+
+            agent_result = {
+                "system_prompt": (
+                    "사용자의 현재 감정과 고민을 탐색하고 "
+                    "공감적 태도로 대화를 이어간다."
+                )
+            }
+
+        # 추가
+        print("=== AGENT PARSED ===")
+        print(agent_result)
+
+        # 추가
+        print("=== AGENT SYSTEM PROMPT ===")
+        print(agent_result["system_prompt"])
+
+        if contains_foreign(agent_result["system_prompt"]):
+            print("=== AGENT FOREIGN DETECTED ===")
+            print(agent_result["system_prompt"])
+
+            agent_result["system_prompt"] = (
+                f"사용자 닉네임은 '{nickname}'이다. "
+                "현재 상태를 탐색하고 이전 회차 기억과 감정 반영을 우선한다. "
+                "질문은 한 번에 하나씩 제시한다. "
+                "정서적 안정화를 우선한다."
+            )
+
+        print("foreign =", contains_foreign(agent_result["system_prompt"]))
+
+        system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
+        system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
+        SESSION_PROMPT_CACHE[cache_key] = system_content
+        print("=== system_prompt ===")  # Agent가 생성한 system_prompt 내용
+        print(agent_result["system_prompt"])
+        
+    else:
+        # ↓↓↓ 기존 process_chat 366~372줄 그대로 이동 ↓↓↓
+        system_content = GENERAL_PROMPT
+        classification_block = build_classification_prompt(classification_results)
+        if classification_block:
+            system_content += "\n\n" + classification_block
+        system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
+        SESSION_PROMPT_CACHE[cache_key] = system_content
+
+    return system_content
+
+def prewarm_session_prompt(session_id: str, user_id: str, nickname: str, persona_type: dict):
+    """BackgroundTasks용 sync 진입점. 스레드풀에서 돌아 메인 이벤트 루프를 막지 않음.
+    실패해도 조용히 넘어감 — 첫 메시지 때 process_chat이 동기로 폴백 생성."""
+    print("=== PREWARM START ===", session_id)
+    try:
+        asyncio.run(_prewarm_session_prompt(session_id, user_id, nickname, persona_type))
+    except Exception as e:
+        print("=== PREWARM FAILED ===", session_id, str(e))
+
+
+async def _prewarm_session_prompt(session_id, user_id, nickname, persona_type):
+    # 요청 스코프 db는 응답 후 닫히므로 자체 엔진 생성 (summary 태스크와 동일 패턴)
+    url = os.getenv("DATABASE_URL_SENSITIVE").replace("postgresql://", "postgresql+asyncpg://")
+    engine = create_async_engine(url, poolclass=NullPool)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with SessionLocal() as db_sensitive:
+            await build_base_system_prompt(
+                user_id=user_id,
+                nickname=nickname,
+                session_id=session_id,
+                persona_type=persona_type,
+                db_sensitive=db_sensitive,
+            )
+    finally:
+        await engine.dispose()
 
 # ─────────────────────────────────────────
 # /chat 비즈니스 로직
@@ -244,155 +425,13 @@ async def process_chat(
             await db_sensitive.flush()
             use_summary = True
 
-    # 3.5 설문결과 로드 — 항상 사용자의 '최신' 설문 기준 (첫 대화 + 재대화 공통)
-    classification_results = await load_classification_results(
-        current_user["user_id"], db_sensitive
+    system_content = await build_base_system_prompt(
+        user_id=current_user["user_id"],
+        nickname=current_user.get("nickname", "사용자"),
+        session_id=str(counseling_session.id),
+        persona_type=counseling_session.persona_type,
+        db_sensitive=db_sensitive,
     )
-
-    # 4. system_prompt 결정
-    summary_result = await db_sensitive.execute(
-            select(Summary)
-            .where(
-                Summary.user_id == uuid.UUID(current_user["user_id"]),
-                Summary.deleted_at.is_(None),
-            )
-            .order_by(Summary.created_at.desc())
-            .limit(3)
-        )
-    recent_summaries = summary_result.scalars().all() 
-
-    cache_key = str(counseling_session.id)
-
-    if cache_key in SESSION_PROMPT_CACHE:
-        system_content = SESSION_PROMPT_CACHE[cache_key]
-        print("=== PROMPT: 캐시 사용 ===")
-
-    elif recent_summaries:
-        # 재상담: Agent가 요약 기반으로 system_prompt 생성
-        # W2 복호화: main_complaint / next_session_notes는 BYTEA → 평문으로 풀어 Agent에 전달
-        def _safe_decrypt(blob, kid):
-            try:
-                if blob is None:
-                    return ""
-                return decrypt_content(blob, kid)
-            except Exception:
-                return ""
-
-        def _read_jsonb_w3(enc_blob, key_id, legacy_value, default):
-            """W3 암호화 우선. 없거나 복호화 실패면 옛 평문 JSONB로 fallback.
-            마이그레이션 중간 상태(옛 행은 새 컬럼 NULL)에서도 안전."""
-            if enc_blob is not None:
-                decoded = decrypt_json(enc_blob, key_id)
-                if decoded is not None:
-                    return decoded
-            return legacy_value if legacy_value is not None else default
-
-        prompt_agent_input = {
-            "nickname": current_user.get("nickname", "사용자"),
-            "classification_results": classification_results,
-            "past_summaries": [
-                {
-                    "main_complaint": _safe_decrypt(
-                        s.main_complaint_encrypted, s.main_complaint_key_id
-                    ),
-                    "core_topics": _read_jsonb_w3(
-                        s.core_topics_encrypted, s.core_topics_key_id, s.core_topics, []
-                    ),
-                    "next_session_notes": _safe_decrypt(
-                        s.next_session_notes_encrypted, s.next_session_notes_key_id
-                    ),
-                    "prompt_adjustment": s.prompt_adjustment,   # 평문 유지
-                    "important_memory": _read_jsonb_w3(
-                        s.important_memory_encrypted, s.important_memory_key_id, s.important_memory, []
-                    ),
-                    "risk_level": s.risk_level,
-                    "suicidal_mentioned": s.suicidal_mentioned,
-                    "created_at": s.created_at.isoformat(),
-                }
-                for s in recent_summaries
-            ],
-            "persona_params": counseling_session.persona_type.get("params", {}),
-            "ai_name": counseling_session.persona_type.get("name", "다온"),
-            "talk_type": counseling_session.persona_type.get("talk_type", "존댓말"),
-        }
-
-        print("===== AGENT INPUT =====")
-        print(json.dumps(prompt_agent_input, ensure_ascii=False, indent=2))
-        agent_response = groq_client.chat.completions.create(
-            model="gpt-oss-120b",
-            messages=[
-                {"role": "system", "content": AGENT_PROMPT},
-                {
-                    "role": "user",
-                    "content": json.dumps(prompt_agent_input, ensure_ascii=False),
-                },
-            ],
-        )
-        print("=== PROMPT: 재상담 - Agent 생성 ===")
-        raw = agent_response.choices[0].message.content.strip()
-
-        if raw.startswith("```"):
-            raw = raw.strip("`").strip()
-            if raw[:4].lower() == "json":
-                raw = raw[4:].strip()
-
-        try:
-            start = raw.find("{")
-            end = raw.rfind("}")
-
-            if start != -1 and end > start:
-                raw = raw[start:end + 1]
-
-            agent_result = json.loads(raw)
-
-        except Exception as e:
-            print("=== AGENT JSON PARSE FAILED ===")
-            print(raw)
-            print(str(e))
-
-            agent_result = {
-                "system_prompt": (
-                    "사용자의 현재 감정과 고민을 탐색하고 "
-                    "공감적 태도로 대화를 이어간다."
-                )
-            }
-
-        # 추가
-        print("=== AGENT PARSED ===")
-        print(agent_result)
-
-        # 추가
-        print("=== AGENT SYSTEM PROMPT ===")
-        print(agent_result["system_prompt"])
-
-        if contains_foreign(agent_result["system_prompt"]):
-            print("=== AGENT FOREIGN DETECTED ===")
-            print(agent_result["system_prompt"])
-
-            agent_result["system_prompt"] = (
-                f"사용자 닉네임은 '{current_user.get('nickname', '사용자')}'이다. "
-                "현재 상태를 탐색하고 이전 회차 기억과 감정 반영을 우선한다. "
-                "질문은 한 번에 하나씩 제시한다. "
-                "정서적 안정화를 우선한다."
-            )
-
-        print("foreign =", contains_foreign(agent_result["system_prompt"]))
-
-        system_content = GENERAL_PROMPT + "\n\n" + agent_result["system_prompt"]
-        system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
-        SESSION_PROMPT_CACHE[cache_key] = system_content
-        print("=== system_prompt ===")  # Agent가 생성한 system_prompt 내용
-        print(agent_result["system_prompt"])
-
-    else:
-        # 첫 대화: general_prompt 사용
-        system_content = GENERAL_PROMPT
-        classification_block = build_classification_prompt(classification_results)
-        if classification_block:
-            system_content += "\n\n" + classification_block
-        system_content += "\n\n" + CRISIS_TOOL_INSTRUCTION
-        SESSION_PROMPT_CACHE[cache_key] = system_content
-        print("=== PROMPT: 첫 상담 - GENERAL_PROMPT 사용 ===")
 
     # ── 페르소나 프롬프트 (캐시 본체와 분리, 매 요청 재생성) ──
     # 프론트가 보낸 persona 우선, 없으면 DB 세션 값 사용.
