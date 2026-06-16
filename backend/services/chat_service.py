@@ -73,6 +73,20 @@ def contains_foreign(text: str) -> bool:
     return bool(re.search(pattern, text))
 
 
+
+
+async def load_latest_classification_id(user_id, db_sensitive):
+    """사용자의 가장 최근 설문(Classification) PK 조회. 없으면 None."""
+    result = await db_sensitive.execute(
+        select(Classification.id)
+        .where(
+            Classification.user_id == uuid.UUID(user_id),
+            Classification.deleted_at == None,
+        )
+        .order_by(Classification.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar()
 # ─────────────────────────────────────────
 # 설문결과(classification) 로드 / 프롬프트 변환
 # ─────────────────────────────────────────
@@ -177,9 +191,13 @@ async def process_chat(
             if persona is not None
             else (last_session.persona_type if last_session else None)
         )
+        latest_cls_id = await load_latest_classification_id(
+            current_user["user_id"], db_sensitive
+        )
         counseling_session = CounselingSession(
             id=uuid.UUID(session_id),
             user_id=uuid.UUID(current_user["user_id"]),
+            classification_id=latest_cls_id,
             persona_type=inherited,
             is_active=True,
         )
@@ -211,8 +229,12 @@ async def process_chat(
             from tasks.summary import summarize_session
             summarize_session.delay(old_session_id)
             # 새 세션 생성
+            latest_cls_id = await load_latest_classification_id(
+                current_user["user_id"], db_sensitive
+            )
             counseling_session = CounselingSession(
                 user_id=uuid.UUID(current_user["user_id"]),
+                classification_id=latest_cls_id,
                 persona_type=normalize_persona(
                     persona if persona is not None else counseling_session.persona_type
                 ),
