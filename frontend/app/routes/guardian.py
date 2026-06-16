@@ -6,6 +6,7 @@
 """
 
 from flask import Blueprint, render_template, redirect, url_for, flash, session, request
+from ..services import api_client
 
 bp = Blueprint("guardian", __name__)
 
@@ -26,8 +27,8 @@ def dashboard():
     guard = _require_guardian()
     if guard:
         return guard
-    selected_ward_id = request.args.get("ward_id")   # 사이드바에서 클릭한 사용자
-    wards = []  # 피보호자 목록 (추후 백엔드)
+    wards = api_client.get_wards()
+    selected_ward_id = request.args.get("ward_id") or (wards[0]["ward_id"] if wards else None)
     return render_template(
         "guardian/dashboard.html",
         wards=wards,
