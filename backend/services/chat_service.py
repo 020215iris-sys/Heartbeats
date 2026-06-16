@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from models import Conversation, CounselingSession, Summary, Classification, ClassificationResult
 from core.security import verify_access_token
-from core.crypto import encrypt_content, decrypt_content
+from core.crypto import encrypt_content, decrypt_content, decrypt_json
 from routers.counseling import close_session_with_summary
 from services.personas import normalize_persona
 from services.persona_service import build_persona_prompt
@@ -256,6 +256,15 @@ async def process_chat(
             except Exception:
                 return ""
 
+        def _read_jsonb_w3(enc_blob, key_id, legacy_value, default):
+            """W3 암호화 우선. 없거나 복호화 실패면 옛 평문 JSONB로 fallback.
+            마이그레이션 중간 상태(옛 행은 새 컬럼 NULL)에서도 안전."""
+            if enc_blob is not None:
+                decoded = decrypt_json(enc_blob, key_id)
+                if decoded is not None:
+                    return decoded
+            return legacy_value if legacy_value is not None else default
+
         prompt_agent_input = {
             "nickname": current_user.get("nickname", "사용자"),
             "classification_results": classification_results,
@@ -264,12 +273,16 @@ async def process_chat(
                     "main_complaint": _safe_decrypt(
                         s.main_complaint_encrypted, s.main_complaint_key_id
                     ),
-                    "core_topics": s.core_topics,
+                    "core_topics": _read_jsonb_w3(
+                        s.core_topics_encrypted, s.core_topics_key_id, s.core_topics, []
+                    ),
                     "next_session_notes": _safe_decrypt(
                         s.next_session_notes_encrypted, s.next_session_notes_key_id
                     ),
-                    "prompt_adjustment": s.prompt_adjustment,
-                    "important_memory": s.important_memory,
+                    "prompt_adjustment": s.prompt_adjustment,   # 평문 유지
+                    "important_memory": _read_jsonb_w3(
+                        s.important_memory_encrypted, s.important_memory_key_id, s.important_memory, []
+                    ),
                     "risk_level": s.risk_level,
                     "suicidal_mentioned": s.suicidal_mentioned,
                     "created_at": s.created_at.isoformat(),

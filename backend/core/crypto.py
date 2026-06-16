@@ -21,6 +21,7 @@ W2 단계 정책
    반드시 encrypted_content / *_encrypted 컬럼 다루는 모든 경로는 이 함수를 통과해야 함.
 """
 import os
+import json
 import base64
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -111,3 +112,45 @@ def decrypt_content(ciphertext: bytes, key_id: str) -> str:
         f"알 수 없는 encryption_key_id: '{key_id}'. "
         f"지원: '{_CURRENT_KEY_ID}' (W2), {sorted(_LEGACY_PLAINTEXT_KEY_IDS)} (옛 평문)."
     )
+
+# ──────────────────────────────────────────
+# W3: JSONB 컬럼용 헬퍼
+# 대상 컬럼:
+#   summaries.core_topics, summaries.important_memory,
+#   classifications.compound_flags, classification_results.responses
+# ──────────────────────────────────────────
+def encrypt_json(value) -> tuple[bytes | None, str | None]:
+    """
+    dict / list / None → AES-256-GCM 암호문.
+
+    None → (None, None)  (nullable 컬럼에 그대로 NULL 저장 가능)
+    []   → '[]' 평문을 정상 암호화
+    {}   → '{}' 평문을 정상 암호화
+
+    ensure_ascii=False — 한글이 \\uXXXX로 부풀지 않게 UTF-8 직렬화.
+    반환: (ciphertext_bytes, key_id) — DB의 *_encrypted + *_key_id 컬럼 짝.
+    """
+    if value is None:
+        return None, None
+    payload = json.dumps(value, ensure_ascii=False)
+    return encrypt_content(payload)
+
+
+def decrypt_json(ciphertext, key_id):
+    """
+    BYTEA + key_id → dict / list / None.
+
+    - ciphertext나 key_id가 None이면 None.
+    - 복호화·JSON 파싱 실패 시 예외 안 던지고 None 반환
+      → 호출부에서 옛 평문 컬럼으로 fallback 가능 (마이그레이션 중간 상태 안전).
+    - asyncpg가 BYTEA를 bytes/memoryview/bytearray 어느 형태로 줘도 decrypt_content가 흡수.
+    """
+    if ciphertext is None or key_id is None:
+        return None
+    try:
+        plaintext = decrypt_content(ciphertext, key_id)
+        if not plaintext:
+            return None
+        return json.loads(plaintext)
+    except Exception:
+        return None

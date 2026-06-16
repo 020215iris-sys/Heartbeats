@@ -13,7 +13,7 @@ import uuid
 import json
 import os
 import yaml
-from core.crypto import decrypt_content, encrypt_content
+from core.crypto import decrypt_content, encrypt_content, encrypt_json
 from services.summary_service import request_summary
 from services.personas import normalize_persona, DEFAULT_PERSONA
 
@@ -299,6 +299,12 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
     mc_bytes, mc_kid = encrypt_content(summary_data.get("main_complaint", "") or "")
     nsn_bytes, nsn_kid = encrypt_content(summary_data.get("next_session_notes", "") or "")
 
+    # W3: core_topics, important_memory 듀얼 라이트
+    ct_value = summary_data.get("core_topics", [])
+    im_value = summary_data.get("important_memory", [])
+    ct_bytes, ct_kid = encrypt_json(ct_value)
+    im_bytes, im_kid = encrypt_json(im_value)
+
     new_summary = Summary(
         session_id=session.id,
         user_id=session.user_id,
@@ -308,9 +314,15 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
         next_session_notes_key_id=nsn_kid,
         risk_level=summary_data.get("risk_level", "low"),
         suicidal_mentioned=summary_data.get("suicidal_mentioned", False),
-        core_topics=summary_data.get("core_topics", []),
-        prompt_adjustment=summary_data.get("prompt_adjustment", []),
-        important_memory=summary_data.get("important_memory", []),
+        prompt_adjustment=summary_data.get("prompt_adjustment", []),    # 평문 유지
+        # 옛 평문 (컷오버 전까지 듀얼 라이트)
+        core_topics=ct_value,
+        important_memory=im_value,
+        # W3 암호화
+        core_topics_encrypted=ct_bytes,
+        core_topics_key_id=ct_kid,
+        important_memory_encrypted=im_bytes,
+        important_memory_key_id=im_kid,
     )
 
     db_sensitive.add(new_summary)

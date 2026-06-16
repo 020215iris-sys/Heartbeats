@@ -120,7 +120,9 @@ class Classification(BaseSensitive):
 
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id             = Column(UUID(as_uuid=True), nullable=False)
-    compound_flags      = Column(JSONB, nullable=True)
+    compound_flags           = Column(JSONB, nullable=True)          # 옛 평문 (컷오버 전까지 듀얼 라이트)
+    compound_flags_encrypted = Column(LargeBinary, nullable=True)    # W3
+    compound_flags_key_id    = Column(String(50), nullable=True)     # W3
     selected_prompt_key = Column(String, nullable=True)
     created_at          = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     deleted_at          = Column(DateTime(timezone=True), nullable=True)
@@ -134,7 +136,9 @@ class ClassificationResult(BaseSensitive):
     category_code     = Column(String, ForeignKey("category_catalog.category_code"), nullable=False)
     instrument        = Column(String, nullable=False)
     instrument_ver    = Column(String, nullable=True)
-    responses         = Column(JSONB, nullable=True)
+    responses           = Column(JSONB, nullable=True)               # 옛 평문 (듀얼 라이트)
+    responses_encrypted = Column(LargeBinary, nullable=True)         # W3
+    responses_key_id    = Column(String(50), nullable=True)          # W3
     total_score       = Column(SmallInteger, nullable=True)
     severity          = Column(String, nullable=True)
     score_delta       = Column(SmallInteger, nullable=True)
@@ -194,9 +198,18 @@ class Summary(BaseSensitive):
 
     risk_level         = Column(String, default="low")
     suicidal_mentioned = Column(Boolean, default=False)
-    core_topics        = Column(JSONB, nullable=True)        # 키워드 배열, 평문 유지
-    prompt_adjustment  = Column(JSONB, nullable=True)        # 태그 배열, 평문 유지
-    important_memory   = Column(JSONB, nullable=True)        # 장기 사실, 평문 유지 (향후 검토)
+
+    # W3 암호화: core_topics, important_memory는 식별성 높아 BYTEA로 분리.
+    # 옛 JSONB 컬럼은 컷오버 전까지 듀얼 라이트로 유지.
+    core_topics                = Column(JSONB, nullable=True)         # 옛 평문 (컷오버 후 제거)
+    core_topics_encrypted      = Column(LargeBinary, nullable=True)   # W3
+    core_topics_key_id         = Column(String(50), nullable=True)    # W3
+
+    prompt_adjustment          = Column(JSONB, nullable=True)         # 태그 배열, 평문 유지
+
+    important_memory           = Column(JSONB, nullable=True)         # 옛 평문 (컷오버 후 제거)
+    important_memory_encrypted = Column(LargeBinary, nullable=True)   # W3
+    important_memory_key_id    = Column(String(50), nullable=True)    # W3
 
     created_at         = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     deleted_at         = Column(DateTime(timezone=True), nullable=True)   # 자동삭제(1년) soft delete 시각
@@ -222,7 +235,9 @@ class CrisisEvent(BaseSensitive):
     conversation_id   = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False)
     crisis_score      = Column(Float, nullable=False)
     severity          = Column(String, nullable=False)
-    action_taken      = Column(String, nullable=True)
+    action_taken           = Column(String, nullable=True)            # 옛 평문 (듀얼 라이트)
+    action_taken_encrypted = Column(LargeBinary, nullable=True)       # W3
+    action_taken_key_id    = Column(String(50), nullable=True)        # W3
     guardian_notified = Column(Boolean, default=False)
     resolved          = Column(Boolean, default=False)
     occurred_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
