@@ -41,3 +41,18 @@ def day():
     date = request.args.get("date", "")
     data = api_client.get_day(date, request.args.get("ward_id"))
     return jsonify(data or {"date": date, "items": []})
+
+@bp.route("/weekly")
+def weekly():
+    if "access_token" not in session:
+        return jsonify({"error": "unauthorized"}), 401
+    data = api_client.get_weekly(request.args.get("anchor"), request.args.get("ward_id"))
+    return jsonify(data or {"week_start": "", "days": []})
+
+@bp.route("/topics")
+def topics():
+    if "access_token" not in session:
+        return jsonify({"error": "unauthorized"}), 401
+    month = request.args.get("month", "")
+    data = api_client.get_topics(month, request.args.get("ward_id"))
+    return jsonify(data or {"month": month, "topics": []})

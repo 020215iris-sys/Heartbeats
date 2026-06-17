@@ -13,7 +13,7 @@ import uuid
 import json
 import os
 import yaml
-from core.crypto import decrypt_content, encrypt_content, encrypt_json
+from core.crypto import decrypt_content, decrypt_json, encrypt_content, encrypt_json
 from services.summary_service import request_summary
 from services.personas import normalize_persona, DEFAULT_PERSONA
 
@@ -873,3 +873,104 @@ async def dashboard_day(
         })
 
     return {"date": date, "items": items}
+
+@router.get("/dashboard/weekly")
+async def dashboard_weekly(
+    anchor: str | None = Query(None, description="이 날짜가 포함된 주. 없으면 이번 주"),
+    ward_id: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    db_general: AsyncSession = Depends(get_db_general),
+):
+    """주간(월~일) 일자별 상담시간(분) — 본인/보호자(ward) 공용."""
+    uid = uuid.UUID(await _resolve_target_user_id(current_user, ward_id, db_general))
+
+    if anchor:
+        try:
+            y, m, d = map(int, anchor.split("-"))
+            base = datetime(y, m, d, tzinfo=KST)
+        except Exception:
+            raise HTTPException(status_code=400, detail="anchor는 'YYYY-MM-DD' 형식이어야 합니다.")
+    else:
+        base = datetime.now(KST)
+
+    end_day = base.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    start_day = end_day - timedelta(days=7)
+    start_utc = start_day.astimezone(timezone.utc)
+    end_utc = end_day.astimezone(timezone.utc)
+
+    rows = await db_sensitive.execute(
+        select(CounselingSession.started_at, CounselingSession.ended_at).where(
+            CounselingSession.user_id == uid,
+            CounselingSession.deleted_at.is_(None),
+            CounselingSession.started_at >= start_utc,
+            CounselingSession.started_at < end_utc,
+        )
+    )
+
+    mins = {(start_day + timedelta(days=i)).date().isoformat(): 0.0 for i in range(7)}
+    for started_at, ended_at in rows.all():
+        if ended_at is None:
+            continue
+        dur = (ended_at - started_at).total_seconds() / 60.0
+        if dur <= 0:
+            continue
+        key = _kst_date(started_at)
+        if key in mins:
+            mins[key] += dur
+
+    days = [{"date": k, "minutes": round(v, 1)} for k, v in sorted(mins.items())]
+    return {"start": start_day.date().isoformat(), "days": days}
+
+@router.get("/dashboard/topics")
+async def dashboard_topics(
+    month: str = Query(..., description="YYYY-MM"),
+    ward_id: str | None = Query(None),
+    current_user: dict = Depends(get_current_user),
+    db_sensitive: AsyncSession = Depends(get_db_sensitive),
+    db_general: AsyncSession = Depends(get_db_general),
+):
+    """월별 core_topics 빈도 (워드클라우드용) — 본인/보호자 공용."""
+    try:
+        y, m = map(int, month.split("-"))
+        start_kst = datetime(y, m, 1, tzinfo=KST)
+        end_kst = datetime(y + (m == 12), (m % 12) + 1, 1, tzinfo=KST)
+    except Exception:
+        raise HTTPException(status_code=400, detail="month는 'YYYY-MM' 형식이어야 합니다.")
+
+    start_utc = start_kst.astimezone(timezone.utc)
+    end_utc = end_kst.astimezone(timezone.utc)
+    uid = uuid.UUID(await _resolve_target_user_id(current_user, ward_id, db_general))
+
+    rows = await db_sensitive.execute(
+        select(
+            Summary.core_topics,
+            Summary.core_topics_encrypted,
+            Summary.core_topics_key_id,
+        ).where(
+            Summary.user_id == uid,
+            Summary.deleted_at.is_(None),
+            Summary.created_at >= start_utc,
+            Summary.created_at < end_utc,
+        )
+    )
+
+    counts: dict[str, int] = {}
+    for legacy, enc, kid in rows.all():
+        topics = None
+        if enc is not None:
+            try:
+                topics = decrypt_json(enc, kid)
+            except Exception:
+                topics = None
+        if topics is None:
+            topics = legacy
+        if not isinstance(topics, list):
+            continue
+        for t in topics:
+            t = str(t).strip()
+            if t:
+                counts[t] = counts.get(t, 0) + 1
+
+    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    return {"month": month, "topics": [{"text": w, "weight": c} for w, c in items]}

@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..services import api_client
 
 from database import get_db_general
 from core.security import get_current_user

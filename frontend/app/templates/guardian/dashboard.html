@@ -2,82 +2,349 @@
 {% extends "base.html" %}
 {% block title %}보호자 대시보드 · 하트비트{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-3xl px-4 py-8">
+<style>
+  /* dashboard 전용 다크모드 보정 */
+  .dark .guardian-dashboard {
+    background: linear-gradient(to bottom, #0f172a, #111827, #0f172a) !important;
+  }
 
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold text-slate-900">보호자 대시보드</h1>
-    <p class="mt-2 text-sm text-slate-600">
-      {{ current_user.nickname or current_user.email }} 님, 연결된 피보호자의 상태를 확인하세요.
-    </p>
-  </div>
+  .dark .guardian-dashboard .gd-surface {
+    background-color: rgba(30, 41, 59, 0.88) !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+    color: #e2e8f0;
+  }
 
-  {% if not wards %}
-    <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-      <p class="text-sm text-slate-500">아직 연결된 피보호자가 없어요.</p>
-      <p class="mt-1 text-xs text-slate-400">피보호자가 발급한 초대 코드로 가입하면 연결됩니다.</p>
-    </div>
-  {% else %}
-    <section class="mb-4">
-      <label class="mb-2 block text-sm font-semibold text-slate-700">피보호자</label>
-      <select onchange="location.href='?ward_id=' + this.value"
-              class="rounded-xl border border-slate-300 px-3 py-2 text-sm">
-        {% for w in wards %}
-        <option value="{{ w.ward_id }}" {{ 'selected' if w.ward_id == selected_ward_id else '' }}>{{ w.nickname }}</option>
-        {% endfor %}
-      </select>
+  .dark .guardian-dashboard .gd-soft {
+    background-color: rgba(51, 65, 85, 0.55) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+  }
+
+  .dark .guardian-dashboard .gd-soft-solid {
+    background-color: #334155 !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+  }
+
+  .dark .guardian-dashboard .gd-hover:hover {
+    background-color: #334155 !important;
+    color: #ffffff !important;
+  }
+
+  .dark .guardian-dashboard .gd-day-empty {
+    background-color: rgba(30, 41, 59, 0.45) !important;
+  }
+
+  .dark .guardian-dashboard .gd-divider {
+    border-color: #334155 !important;
+  }
+
+  .dark .guardian-dashboard .gd-muted {
+    color: #94a3b8 !important;
+  }
+
+  .dark .guardian-dashboard .gd-strong {
+    color: #f8fafc !important;
+  }
+
+  .dark .guardian-dashboard .gd-accent-rose {
+    background-color: rgba(244, 63, 94, 0.14) !important;
+    border-color: rgba(251, 113, 133, 0.3) !important;
+    color: #fda4af !important;
+  }
+
+  .dark .guardian-dashboard .gd-accent-blue {
+    background-color: rgba(59, 130, 246, 0.14) !important;
+    color: #93c5fd !important;
+  }
+
+  .dark .guardian-dashboard .gd-accent-violet {
+    background-color: rgba(124, 58, 237, 0.16) !important;
+    color: #c4b5fd !important;
+  }
+
+  .dark .guardian-dashboard .gd-chip-low {
+    background-color: rgba(16, 185, 129, 0.14) !important;
+    color: #6ee7b7 !important;
+  }
+
+  .dark .guardian-dashboard .gd-chip-medium {
+    background-color: rgba(245, 158, 11, 0.14) !important;
+    color: #fcd34d !important;
+  }
+
+  .dark .guardian-dashboard .gd-chip-high {
+    background-color: rgba(249, 115, 22, 0.14) !important;
+    color: #fdba74 !important;
+  }
+
+  .dark .guardian-dashboard .gd-chip-crisis {
+    background-color: rgba(244, 63, 94, 0.14) !important;
+    color: #fda4af !important;
+  }
+  .guardian-dashboard .gd-cal-border { border-color: #e2e8f0 !important; }            /* 라이트 = slate-200 (카드와 동일) */
+  .dark .guardian-dashboard .gd-cal-border { border-color: rgba(148, 163, 184, 0.18) !important; }  /* 다크 = 카드와 동일 */
+</style>
+<div class="guardian-dashboard min-h-screen bg-gradient-to-b from-rose-50 via-white to-slate-50">
+  <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+
+    <!-- Header -->
+    <section
+      class="gd-surface mb-8 overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-[0_10px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div class="relative p-6 sm:p-8">
+        <div class="absolute right-0 top-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-rose-100 blur-3xl">
+        </div>
+        <div class="absolute bottom-0 left-0 h-24 w-24 -translate-x-4 translate-y-4 rounded-full bg-sky-100 blur-3xl">
+        </div>
+
+        <div class="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div
+              class="gd-accent-rose mb-3 inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600">
+              <span>💗</span>
+              <span>Guardian Dashboard</span>
+            </div>
+            <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+              보호자 대시보드
+            </h1>
+            <p class="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
+              <span class="font-semibold text-slate-800">{{ current_user.nickname or current_user.email }}</span> 님,
+              연결된 피보호자의 최근 감정 흐름과 상담 요약을 한눈에 확인하세요.
+            </p>
+          </div>
+
+          {% if wards %}
+          <div class="flex gap-3">
+            <div class="gd-surface rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <div class="text-xs font-medium text-slate-400">연결된 피보호자</div>
+              <div class="mt-1 text-lg font-bold text-slate-900">{{ wards|length }}명</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
     </section>
 
+    {% if not wards %}
+    <section
+      class="gd-surface rounded-3xl border border-dashed border-slate-300 bg-white/80 p-10 text-center shadow-sm backdrop-blur">
+      <div
+        class="gd-soft-solid mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-3xl">
+        🌱
+      </div>
+      <h2 class="text-lg font-bold text-slate-800">아직 연결된 피보호자가 없어요</h2>
+      <p class="mt-2 text-sm text-slate-500">
+        피보호자가 발급한 초대 코드로 가입하면 이곳에서 상태를 확인할 수 있어요.
+      </p>
+    </section>
+
+    {% else %}
+    <!-- Ward selector -->
     <section class="mb-6">
-      <div class="rounded-xl border border-slate-200 bg-white p-4">
-        <div class="mb-3 flex items-center justify-between">
-          <h2 id="cal-title" class="text-base font-bold text-slate-900"></h2>
-          <div class="flex items-center gap-1">
-            <button type="button" onclick="calMove(-1)" class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">‹</button>
-            <button type="button" onclick="calToday()" class="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">오늘</button>
-            <button type="button" onclick="calMove(1)" class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100">›</button>
+      <div class="gd-surface rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-slate-700">피보호자 선택</h2>
+            <p class="mt-1 text-xs text-slate-500">확인할 대상을 바꾸면 차트와 캘린더가 함께 갱신됩니다.</p>
+          </div>
+
+          <div class="relative w-full sm:w-72">
+            <select onchange="location.href='?ward_id=' + this.value"
+              class="gd-surface w-full appearance-none rounded-2xl border border-slate-300 bg-white px-4 py-3 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-rose-300 focus:ring-4 focus:ring-rose-100">
+              {% for w in wards %}
+              <option value="{{ w.ward_id }}" {{ 'selected' if w.ward_id==selected_ward_id else '' }}>
+                {{ w.nickname }}
+              </option>
+              {% endfor %}
+            </select>
+            <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
         </div>
-        <div class="grid grid-cols-7 text-center text-xs font-medium text-slate-400">
-          <div class="py-1 text-red-400">일</div><div class="py-1">월</div><div class="py-1">화</div>
-          <div class="py-1">수</div><div class="py-1">목</div><div class="py-1">금</div><div class="py-1 text-blue-400">토</div>
+      </div>
+    </section>
+
+    <!-- Summary cards -->
+    <section class="mb-6 grid gap-6 lg:grid-cols-2">
+      <div class="gd-surface rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+        <div class="mb-4 flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">지난 7일 상담 시간</h2>
+            <p class="mt-1 text-xs text-slate-500">일별 상담 시간을 선으로 확인할 수 있어요.</p>
+          </div>
+          <div class="gd-accent-blue rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
+            최근 7일
+          </div>
         </div>
-        <div id="cal-grid" class="grid grid-cols-7 border-l border-t border-slate-100"></div>
-        <div class="mt-3 flex flex-wrap justify-center gap-3 text-[11px] text-slate-500">
-          <span>☀️ 양호</span><span>☁️ 보통</span><span>🌧️ 주의</span><span>⛈️ 위기</span>
+        <div class="gd-soft rounded-2xl bg-slate-50/80 p-3">
+          <canvas id="weeklyChart" height="140"></canvas>
+        </div>
+      </div>
+
+      <div class="gd-surface rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+        <div class="mb-4 flex items-center justify-between">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">이번 달 핵심 주제</h2>
+            <p class="mt-1 text-xs text-slate-500">상담 요약에서 자주 등장한 주제를 보여줍니다.</p>
+          </div>
+          <div class="gd-accent-violet rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-600">
+            월간 키워드
+          </div>
+        </div>
+
+        <div class="gd-soft rounded-2xl bg-slate-50/80 p-3">
+          <div id="wordcloud" class="h-56 w-full"></div>
+          <p id="wc-empty" class="hidden py-16 text-center text-sm text-slate-400">
+            이번 달 주제 데이터가 없어요.
+          </p>
         </div>
       </div>
     </section>
-  {% endif %}
 
-  {# 날짜 상세 모달 (요약만 — 채팅 보기 없음) #}
-  <div id="dayModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4"
-       onclick="if(event.target===this) closeDayModal()">
-    <div class="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl bg-white p-6 shadow-xl">
-      <div class="flex items-start justify-between">
-        <h2 id="dayModalTitle" class="text-lg font-bold text-slate-900"></h2>
-        <button type="button" onclick="closeDayModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+    <!-- Calendar -->
+    <section class="gd-surface mb-8 rounded-3xl border border-slate-200 bg-white/80 p-5 shadow-sm backdrop-blur">
+      <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">감정 캘린더</h2>
+          <p class="mt-1 text-xs text-slate-500">하루별 상담 요약과 위험도를 이모지로 확인하세요.</p>
+        </div>
+
+        <div
+          class="gd-soft flex items-center gap-2 self-start rounded-2xl border border-slate-200 bg-slate-50 px-2 py-1">
+          <button type="button" onclick="calMove(-1)"
+            class="gd-hover rounded-xl px-3 py-2 text-slate-500 transition hover:bg-white hover:text-slate-700">‹</button>
+          <button type="button" onclick="calToday()"
+            class="gd-surface gd-hover rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600">오늘</button>
+          <button type="button" onclick="calMove(1)"
+            class="gd-hover rounded-xl px-3 py-2 text-slate-500 transition hover:bg-white hover:text-slate-700">›</button>
+        </div>
       </div>
-      <div id="dayModalBody" class="mt-4 space-y-3 overflow-y-auto"></div>
-    </div>
-  </div>
 
+      <div class="mb-3 flex items-center justify-between">
+        <h3 id="cal-title" class="text-xl font-extrabold tracking-tight text-slate-900"></h3>
+      </div>
+
+      <div class="gd-cal-border overflow-hidden rounded-2xl border">
+        <div class="gd-soft grid grid-cols-7 bg-slate-50 text-center text-xs font-semibold text-slate-500">
+          <div class="py-3 text-red-400">일</div>
+          <div class="py-3">월</div>
+          <div class="py-3">화</div>
+          <div class="py-3">수</div>
+          <div class="py-3">목</div>
+          <div class="py-3">금</div>
+          <div class="py-3 text-blue-400">토</div>
+        </div>
+        <div id="cal-grid" class="grid grid-cols-7 border-l border-t gd-cal-border bg-white"></div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap gap-2 text-xs">
+        <span
+          class="gd-chip-low inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">☀️
+          양호</span>
+        <span
+          class="gd-chip-medium inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">☁️
+          보통</span>
+        <span
+          class="gd-chip-high inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 font-medium text-orange-700">🌧️
+          주의</span>
+        <span
+          class="gd-chip-crisis inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 font-medium text-rose-700">⛈️
+          위기</span>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- 날짜 상세 모달 -->
+    <div id="dayModal"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+      onclick="if(event.target===this) closeDayModal()">
+      <div
+        class="gd-surface flex max-h-[82vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.22)]">
+        <div class="gd-divider flex items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <h2 id="dayModalTitle" class="text-lg font-bold text-slate-900"></h2>
+            <p class="mt-1 text-xs text-slate-400">해당 날짜의 상담 요약만 표시됩니다.</p>
+          </div>
+          <button type="button" onclick="closeDayModal()"
+            class="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">✕</button>
+        </div>
+        <div id="dayModalBody" class="space-y-3 overflow-y-auto px-6 py-5"></div>
+      </div>
+    </div>
+
+  </div>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
 
 <script>
   const WARD_ID = {{ selected_ward_id | tojson }};
   const CAL_EMOJI = { low: "☀️", medium: "☁️", high: "🌧️", crisis: "⛈️" };
-  const RISK_LABEL = { low: "☀️ 양호", medium: "☁️ 보통", high: "🌧️ 주의", crisis: "⛈️ 위기" };
+  const RISK_LABEL = { low: "양호", medium: "보통", high: "주의", crisis: "위기" };
+  const RISK_PILL = {
+    low: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    medium: "bg-amber-50 text-amber-700 border-amber-200",
+    high: "bg-orange-50 text-orange-700 border-orange-200",
+    crisis: "bg-rose-50 text-rose-700 border-rose-200"
+  };
+  const RISK_BG = {
+    low: "bg-emerald-50/40 dark:bg-emerald-500/10",
+    medium: "bg-amber-50/40 dark:bg-amber-500/10",
+    high: "bg-orange-50/50 dark:bg-orange-500/10",
+    crisis: "bg-rose-50/60 dark:bg-rose-500/15"
+  };
+
   let calY, calM, calDays = {};
+  let weeklyChartInstance = null;
+
+  function isDarkMode() {
+    return document.documentElement.classList.contains("dark");
+  }
+
+  function themeTokens() {
+    const dark = isDarkMode();
+    return {
+      tick: dark ? "#94a3b8" : "#64748b",
+      grid: dark ? "rgba(148,163,184,0.18)" : "rgba(148,163,184,0.15)",
+      tooltipBg: dark ? "#020617" : "#0f172a",
+      tooltipText: "#ffffff",
+      pointBorder: dark ? "#1e293b" : "#ffffff",
+      wordPalette: dark
+        ? ["#fb7185", "#c4b5fd", "#93c5fd", "#5eead4", "#fdba74", "#e2e8f0"]
+        : ["#e11d48", "#7c3aed", "#2563eb", "#0f766e", "#ea580c", "#334155"]
+    };
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  function calToday() { const n = new Date(); calY = n.getFullYear(); calM = n.getMonth() + 1; renderCalendar(); }
-  function calMove(d) { calM += d; if (calM < 1) { calM = 12; calY--; } else if (calM > 12) { calM = 1; calY++; } renderCalendar(); }
+
+  function calToday() {
+    const n = new Date();
+    calY = n.getFullYear();
+    calM = n.getMonth() + 1;
+    renderCalendar();
+  }
+
+  function calMove(d) {
+    calM += d;
+    if (calM < 1) {
+      calM = 12;
+      calY--;
+    } else if (calM > 12) {
+      calM = 1;
+      calY++;
+    }
+    renderCalendar();
+  }
 
   async function renderCalendar() {
     if (!WARD_ID) return;
+
     const monthStr = `${calY}-${String(calM).padStart(2, "0")}`;
     document.getElementById("cal-title").textContent = `${calY}년 ${calM}월`;
 
@@ -85,11 +352,13 @@
     try {
       const res = await fetch(`{{ url_for('dashboard.calendar') }}?month=${monthStr}&ward_id=${WARD_ID}`);
       if (res.ok) days = (await res.json()).days || {};
-    } catch (e) {}
+    } catch (e) { }
+
     calDays = days;
 
     const grid = document.getElementById("cal-grid");
     grid.innerHTML = "";
+
     const firstDow = new Date(calY, calM - 1, 1).getDay();
     const total = new Date(calY, calM, 0).getDate();
     const today = new Date();
@@ -98,53 +367,212 @@
 
     for (let i = 0; i < rows; i++) {
       const dayNum = i - firstDow + 1;
-      const cell = document.createElement("div");
-      cell.className = "min-h-[72px] border-r border-b border-slate-100 p-1.5";
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "group min-h-[96px] border-r border-b gd-cal-border p-2 text-left align-top transition";
+
       if (dayNum >= 1 && dayNum <= total) {
         const ds = `${monthStr}-${String(dayNum).padStart(2, "0")}`;
+        const risk = days[ds];
         const isToday = isThisMonth && dayNum === today.getDate();
-        const numCls = isToday
-          ? "inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white text-xs font-semibold"
-          : "text-xs text-slate-500";
-        cell.innerHTML =
-          `<div class="${numCls}">${dayNum}</div>` +
-          `<div class="mt-1 text-center text-2xl leading-none">${CAL_EMOJI[days[ds]] || ""}</div>`;
-        cell.classList.add("cursor-pointer", "hover:bg-slate-50");
+
+        if (risk && RISK_BG[risk]) {
+          cell.classList.add(...RISK_BG[risk].split(" "));
+        } else {
+          cell.classList.add("bg-white");
+        }
+
+        cell.classList.add("hover:bg-slate-50", "cursor-pointer", "dark:hover:bg-slate-700");
+
+        const dayBadge = isToday
+          ? "inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-rose-500 px-2 text-xs font-bold text-white shadow-sm"
+          : "inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-semibold text-slate-500 group-hover:bg-white";
+
+        cell.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div class="${dayBadge}">${dayNum}</div>
+            <div class="text-right text-2xl leading-none">${CAL_EMOJI[risk] || ""}</div>
+          </div>
+          <div class="mt-4 text-[11px] font-medium text-slate-400">
+            ${risk ? RISK_LABEL[risk] : ""}
+          </div>
+        `;
+
         cell.onclick = () => openDayModal(ds);
+      } else {
+        cell.classList.add("bg-slate-50/60", "gd-day-empty");
+        cell.disabled = true;
       }
+
       grid.appendChild(cell);
     }
   }
 
   function closeDayModal() {
     const m = document.getElementById("dayModal");
-    m.classList.add("hidden"); m.classList.remove("flex");
+    m.classList.add("hidden");
+    m.classList.remove("flex");
   }
+
   async function openDayModal(dateStr) {
     const modal = document.getElementById("dayModal");
-    const prefix = calDays[dateStr] === "crisis" ? "⛈️ " : "";
-    document.getElementById("dayModalTitle").textContent = prefix + dateStr;
+    document.getElementById("dayModalTitle").textContent = dateStr;
     const body = document.getElementById("dayModalBody");
     body.innerHTML = `<p class="text-sm text-slate-400">불러오는 중…</p>`;
-    modal.classList.remove("hidden"); modal.classList.add("flex");
+
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
 
     let items = [];
     try {
       const res = await fetch(`{{ url_for('dashboard.day') }}?date=${dateStr}&ward_id=${WARD_ID}`);
       if (res.ok) items = (await res.json()).items || [];
-    } catch (e) {}
+    } catch (e) { }
 
     if (!items.length) {
       body.innerHTML = `<p class="text-sm text-slate-500">이 날의 상담 기록이 없어요.</p>`;
       return;
     }
+
     body.innerHTML = items.map(it => `
-      <div class="rounded-xl border border-slate-200 p-3">
-        <div class="text-xs text-slate-400">${RISK_LABEL[it.risk_level] || ""}</div>
-        <p class="mt-1 text-sm text-slate-800">${it.summary ? escapeHtml(it.summary) : "(요약 없음)"}</p>
-      </div>`).join("");
+      <div class="gd-soft rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+        <div class="mb-2">
+          <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${RISK_PILL[it.risk_level] || 'bg-slate-100 text-slate-600 border-slate-200'}">
+            ${CAL_EMOJI[it.risk_level] || ""} ${RISK_LABEL[it.risk_level] || "상태"}
+          </span>
+        </div>
+        <p class="text-sm leading-6 text-slate-800">
+          ${it.summary ? escapeHtml(it.summary) : "(요약 없음)"}
+        </p>
+      </div>
+    `).join("");
   }
 
-  if (WARD_ID) document.addEventListener("DOMContentLoaded", calToday);
+  async function loadWeekly() {
+    if (!WARD_ID) return;
+
+    let data = { days: [] };
+    try {
+      const res = await fetch(`{{ url_for('dashboard.weekly') }}?ward_id=${WARD_ID}`);
+      if (res.ok) data = await res.json();
+    } catch (e) { }
+
+    const days = data.days || [];
+    const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+
+    const labels = days.map(d => {
+      const dt = new Date(d.date + "T00:00:00");
+      return `${dt.getMonth() + 1}/${dt.getDate()}(${DOW[dt.getDay()]})`;
+    });
+
+    const values = days.map(d => d.minutes);
+    const ctx = document.getElementById("weeklyChart");
+
+    if (weeklyChartInstance) {
+      weeklyChartInstance.destroy();
+    }
+
+    const theme = themeTokens();
+
+    weeklyChartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "상담시간(분)",
+          data: values,
+          borderColor: "#f43f5e",
+          backgroundColor: "rgba(244,63,94,0.10)",
+          pointBackgroundColor: "#f43f5e",
+          pointBorderColor: theme.pointBorder,
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 5,
+          fill: true,
+          tension: 0.35
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: theme.tooltipBg,
+            titleColor: theme.tooltipText,
+            bodyColor: theme.tooltipText,
+            displayColors: false,
+            callbacks: {
+              label: (ctx) => `${ctx.parsed.y}분`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: theme.tick, font: { size: 11 } }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              color: theme.tick,
+              callback: (v) => `${v}분`
+            },
+            grid: { color: theme.grid }
+          }
+        }
+      }
+    });
+  }
+
+  async function loadTopics() {
+    if (!WARD_ID) return;
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    let topics = [];
+
+    try {
+      const res = await fetch(`{{ url_for('dashboard.topics') }}?month=${monthStr}&ward_id=${WARD_ID}`);
+      if (res.ok) topics = (await res.json()).topics || [];
+    } catch (e) { }
+
+    const wc = document.getElementById("wordcloud");
+    const empty = document.getElementById("wc-empty");
+
+    if (!topics.length) {
+      empty.classList.remove("hidden");
+      wc.classList.add("hidden");
+      return;
+    }
+
+    empty.classList.add("hidden");
+    wc.classList.remove("hidden");
+
+    const maxW = Math.max(...topics.map(t => t.weight), 1);
+    const palette = themeTokens().wordPalette;
+
+    WordCloud(wc, {
+      list: topics.map(t => [t.text, t.weight]),
+      gridSize: 10,
+      weightFactor: 42 / maxW,
+      minSize: 12,
+      color: function (_, weight) {
+        const idx = Math.min(palette.length - 1, Math.floor(weight) % palette.length);
+        return palette[idx];
+      },
+      backgroundColor: "transparent",
+      rotateRatio: 0.08,
+      shrinkToFit: true
+    });
+  }
+
+  if (WARD_ID) {
+    document.addEventListener("DOMContentLoaded", () => {
+      calToday();
+      loadWeekly();
+      loadTopics();
+    });
+  }
 </script>
 {% endblock %}
