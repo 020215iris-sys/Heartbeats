@@ -241,6 +241,50 @@ def get_wards() -> list:
         pass
     return []
 
+def get_weekly(anchor: str | None = None, ward_id: str | None = None) -> dict | None:
+    """주간 상담시간(분). GET /counseling/dashboard/weekly[?anchor=&ward_id=]"""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    params = {}
+    if anchor:
+        params["anchor"] = anchor
+    if ward_id:
+        params["ward_id"] = ward_id
+    try:
+        res = requests.get(
+            f"{_base_url()}/counseling/dashboard/weekly",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
+
+def get_topics(month: str, ward_id: str | None = None) -> dict | None:
+    """월별 토픽 빈도. GET /counseling/dashboard/topics?month=YYYY-MM[&ward_id=]"""
+    token = flask_session.get("access_token")
+    if not token:
+        return None
+    params = {"month": month}
+    if ward_id:
+        params["ward_id"] = ward_id
+    try:
+        res = requests.get(
+            f"{_base_url()}/counseling/dashboard/topics",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if res.ok:
+            return res.json()
+    except requests.RequestException:
+        pass
+    return None
+
 def get_active_survey() -> dict | None:
     """백엔드에서 활성 설문 정의 조회. GET /surveys/active"""
     try:
