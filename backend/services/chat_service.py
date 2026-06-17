@@ -603,6 +603,7 @@ async def process_chat(
             db=db_sensitive,
             user_id=current_user["user_id"],
             conversation_id=str(user_msg.id),
+            session_id=str(counseling_session.id),
             severity=severity,
         )
 
