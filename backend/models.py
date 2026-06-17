@@ -238,6 +238,10 @@ class CrisisEvent(BaseSensitive):
     action_taken           = Column(String, nullable=True)            # 옛 평문 (듀얼 라이트)
     action_taken_encrypted = Column(LargeBinary, nullable=True)       # W3
     action_taken_key_id    = Column(String(50), nullable=True)        # W3
+    # 위기 발화 앞뒤 메시지 박제 (90일 자동삭제 무관 영구 보존).
+    # JSON 배열을 core.crypto.encrypt_json으로 암호화 → BYTEA로 저장.
+    preserved_messages_encrypted = Column(LargeBinary, nullable=True)
+    preserved_messages_key_id    = Column(String(50), nullable=True)
     guardian_notified = Column(Boolean, default=False)
     resolved          = Column(Boolean, default=False)
     occurred_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

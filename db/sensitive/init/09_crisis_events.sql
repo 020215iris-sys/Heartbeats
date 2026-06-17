@@ -12,7 +12,11 @@ CREATE TABLE crisis_events (
     action_taken      VARCHAR(100),                  -- 취해진 조치
     guardian_notified BOOLEAN     NOT NULL DEFAULT FALSE,
     resolved          BOOLEAN     NOT NULL DEFAULT FALSE,
-    occurred_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    occurred_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 위기 발화 앞뒤 메시지 박제(JSON 배열을 AES-256-GCM으로 암호화).
+    -- conversations 90일 자동삭제와 무관하게 위기 맥락 영구 보존.
+    preserved_messages_encrypted BYTEA,
+    preserved_messages_key_id    VARCHAR(50)
 );
 CREATE INDEX idx_crisis_user_id         ON crisis_events(user_id);
 CREATE INDEX idx_crisis_conversation_id ON crisis_events(conversation_id);

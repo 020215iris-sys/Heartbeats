@@ -16,6 +16,7 @@ import yaml
 from core.crypto import decrypt_content, encrypt_content, encrypt_json
 from services.summary_service import request_summary
 from services.personas import normalize_persona, DEFAULT_PERSONA
+from services.crisis_response import finalize_crisis_preservation
 
 
 router = APIRouter(prefix="/counseling", tags=["Counseling"])
@@ -327,6 +328,10 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
 
     db_sensitive.add(new_summary)
     await db_sensitive.flush()
+
+    # 위기 박제 후처리: 같은 세션의 crisis_events에 뒤 PRESERVE_AFTER개 메시지 append.
+    # commit은 close_session_with_summary 호출자가 일괄 처리하므로 여기선 flush만.
+    await finalize_crisis_preservation(session.id, db_sensitive)
 
     return new_summary
 
