@@ -350,7 +350,7 @@ async def process_chat(
     db_sensitive: AsyncSession,
     db_audit: AsyncSession,
 ) -> str:
-
+    voice_path = None
     # 1. JWT 토큰에서 user_id 꺼내기
     token = token.replace("Bearer ", "")
     current_user = verify_access_token(token)
@@ -492,9 +492,9 @@ async def process_chat(
             "content": content,
         })
 
-        print("===== HISTORY =====")
-        print(json.dumps(history, ensure_ascii=False, indent=2))
-        print("===================")
+    print("===== HISTORY =====")
+    print(json.dumps(history, ensure_ascii=False, indent=2))
+    print("===================")
 
     messages_to_send = (
         [
@@ -551,13 +551,16 @@ async def process_chat(
         print("=== TTS VOICE ===")
         print(selected_voice)
 
+        print("=== TTS START ===")
+
         voice_path = await generate_voice_file(
             text=reply,
             voice=selected_voice
         )
 
-        print("=== VOICE FILE ===")
+        print("=== TTS DONE ===")
         print(voice_path)
+
 
     print("=== REPLY CHECK ===", reply)  # 외국어 감지 필터 들어가기 전
     print("=== REPLY CHECK - 외국어감지 전 ===", contains_foreign(reply))

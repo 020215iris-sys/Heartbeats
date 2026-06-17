@@ -124,18 +124,21 @@ def room():
         # persona를 매 요청 동봉 — 백엔드가 이 값으로 페르소나 프롬프트를 만들고,
         # DB 값과 다르면 그 시점에 counseling_sessions.persona_type을 UPDATE함.
         # (프론트는 저장 API를 따로 호출하지 않음. 계약 문서 참고)
-        ai_reply = api_client.send_chat_message(
+        result = api_client.send_chat_message(
             user_message=user_message,
             history=history_before,
             user_id=session.get("user_id"),
             persona=session.get("persona"),
         )
 
+        ai_reply = result["reply"]
+        voice_file = result.get("voice_file")
+
         _append_message("assistant", ai_reply, now)
 
         # fetch 요청이면 JSON 반환, 일반 폼이면 redirect (하위 호환)
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"reply": ai_reply, "timestamp": now})
+            return jsonify({"reply": ai_reply, "timestamp": now, "voice_file": voice_file})
         return redirect(url_for("chat.room"))
 
     # ===== 4. GET: 채팅 화면 렌더링 =====

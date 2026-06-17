@@ -152,8 +152,13 @@
       </div>
 
       {# 음성 입력 — MVP는 비활성. 백엔드 STT 붙으면 disabled 빼고 핸들러 연결 #}
-      <button type="button" disabled title="음성 모드는 곧 추가될 예정이에요" class="flex-none w-10 h-10 rounded-full bg-slate-100 text-slate-400
-                     cursor-not-allowed flex items-center justify-center" aria-label="음성 입력 (준비 중)">
+      <button
+        id="mic-button"
+        type="button"
+        title="음성 입력"
+        class="flex-none w-10 h-10 rounded-full bg-slate-100 text-slate-600
+              flex items-center justify-center"
+        aria-label="음성 입력">
         {# 마이크 아이콘 (인라인 SVG, 외부 라이브러리 불필요) #}
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -366,6 +371,26 @@
 
 {% block scripts %}
 <style>
+    .recording {
+      background-color: #ef4444 !important;
+      color: white !important;
+      animation: pulse-recording 1s infinite;
+    }
+
+    @keyframes pulse-recording {
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.12);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
   .loading-pill {
     background: #ffffff;
     border: 1px solid rgba(226, 232, 240, 0.95);
@@ -431,6 +456,11 @@
   const textarea = document.getElementById('message-input');
   const submitBtn = document.getElementById('send-button');
   const err = document.getElementById('err-message');
+  const micButton =  document.getElementById('mic-button');
+  const micSvg = micButton.innerHTML;
+  let mediaRecorder;
+  let audioChunks = [];
+  let isRecording = false;
   let isSubmitting = false;
 
   // 채팅방 로드 직후 세션을 백그라운드로 준비 (페이지 렌더는 안 막음)
@@ -648,6 +678,20 @@
       if (res.ok) {
         const data = await res.json();
         await appendMessage('assistant', data.reply, data.timestamp, { stream: true });
+
+            console.log(data);
+
+    if (data.voice_file) {
+
+    const audio = new Audio(
+      `http://localhost:8000/${data.voice_file}`
+    );
+
+    audio.play().catch(err => {
+      console.error("TTS 재생 실패:", err);
+    });
+
+  }
       } else {
         await appendMessage('assistant', '답변을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.', new Date(), { stream: false });
       }
@@ -661,6 +705,8 @@
       scrollToBottom();
     }
   });
+
+
 
   // ===== 페르소나 설정 팝업 =====
   const personaModal = document.getElementById('persona-modal');
@@ -729,5 +775,112 @@
       focusMessageInput();
     });
   })();
+
+  // ===== 마이크 출력 - 브라우저 권한 요청 - 녹음 시작 = 5초 후 자동 종료 =====
+  // ===== 마이크 버튼 =====
+  micButton.addEventListener('click', async () => {
+
+    // 이미 녹음 중이면 종료
+    if (isRecording) {
+
+      mediaRecorder.stop();
+      isRecording = false;
+
+      return;
+    }
+
+    try {
+
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          audio: true
+        });
+
+    mediaRecorder =
+      new MediaRecorder(stream);
+
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+
+      try {
+
+        const audioBlob = new Blob(
+          audioChunks,
+          { type: 'audio/webm' }
+        );
+
+        const formData = new FormData();
+
+        formData.append(
+          'file',
+          audioBlob,
+          'recording.webm'
+        );
+
+        const response = await fetch(
+          'http://localhost:8000/stt',
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+
+        const data = await response.json();
+
+        textarea.value = data.text;
+        textarea.focus();
+
+        if (data.text && data.text.trim()) {
+          chatForm.requestSubmit();
+        }
+
+      } catch (err) {
+
+        console.error('STT 오류:', err);
+
+      } finally {
+
+        isRecording = false;
+
+        micButton.innerHTML = micSvg;
+        micButton.classList.remove('recording');
+
+        textarea.placeholder =
+          '메시지를 입력하세요 (Enter로 전송, Shift+Enter로 줄바꿈)';
+      }
+    };
+
+    mediaRecorder.start();
+
+    isRecording = true;
+
+    micButton.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg"
+        class="w-4 h-4"
+        viewBox="0 0 24 24"
+        fill="currentColor">
+      <rect x="7" y="7" width="10" height="10" rx="1"/>
+    </svg>
+    `;    
+    micButton.classList.add('recording');
+
+    textarea.placeholder = '듣고 있어요...';
+
+  } catch (err) {
+
+    console.error(err);
+    alert('마이크 권한이 필요합니다.');
+
+  }
+
+});
+
+
+
 </script>
 {% endblock %}
