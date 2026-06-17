@@ -131,10 +131,15 @@ def send_chat_message(user_message: str, history: list, user_id: str | None, per
 
             # 신규 응답 형식
             if isinstance(data.get("reply"), dict):
-                return data["reply"].get("reply", "응답을 받지 못했어요.")
+                return {
+                    "reply": data["reply"].get("reply", "응답을 받지 못했어요."),
+                    "voice_file": data.get("voice_file")
+                }
 
-            # 기존 응답 형식
-            return data.get("reply", "응답을 받지 못했어요.")
+            return {
+                "reply": data.get("reply", "응답을 받지 못했어요."),
+                "voice_file": data.get("voice_file")
+}
 
         # 429: 접속량 초과 (LLM 큐 초과)
         if res.status_code == 429:

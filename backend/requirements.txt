@@ -56,4 +56,5 @@ WTForms==3.2.2
 alembic==1.18.4
 celery==5.4.0
 redis==5.0.1
-edge-tts
+edge-tts==7.2.8
+faster-whisper==1.2.1
