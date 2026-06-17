@@ -18,6 +18,7 @@ from services.persona_service import build_persona_prompt
 from services.audit_service import log_sensitive
 from services.crisis_response import get_crisis_response_message, save_crisis_event
 from services.crisis_tool_schema import CRISIS_TOOL, CRISIS_TOOL_INSTRUCTION
+from services.tts_service import generate_voice_file
 
 load_dotenv()
 
@@ -51,6 +52,15 @@ with open(GENERAL_PROMPT_PATH, "r", encoding="utf-8") as f:
 # 세션별 system_prompt 캐시
 # ─────────────────────────────────────────
 SESSION_PROMPT_CACHE: dict[str, str] = {}
+
+
+# ─────────────────────────────────────────
+# 음성 지정
+# ─────────────────────────────────────────
+VOICE_MAP = {
+    "voice_1": "ko-KR-InJoonNeural",
+    "voice_2": "ko-KR-SunHiNeural",
+}
 
 
 # ─────────────────────────────────────────
@@ -437,6 +447,12 @@ async def process_chat(
     # 프론트가 보낸 persona 우선, 없으면 DB 세션 값 사용.
     persona_source = persona if persona is not None else counseling_session.persona_type
     p = normalize_persona(persona_source)
+
+    print("=== PERSONA ===")
+    print(json.dumps(p, ensure_ascii=False, indent=2))
+
+    voice_type = p.get("voice_type", "voice_1")
+
     persona_prompt = build_persona_prompt(p)
     if persona_prompt:
         system_content += "\n\n" + persona_prompt
@@ -460,6 +476,26 @@ async def process_chat(
     print("=== PROMPT 사용 ===")
     print(f"=== {system_content} ===")  # 최종 사용된 전체 프롬프트
     print("===================")
+
+    # history 방어 처리
+    clean_history = []
+
+    for msg in history:
+        content = msg.get("content", "")
+
+        # 음성 응답 추가 이후 잘못 저장된 데이터 대응
+        if isinstance(content, dict):
+            content = content.get("reply", "")
+
+        clean_history.append({
+            "role": msg.get("role"),
+            "content": content,
+        })
+
+        print("===== HISTORY =====")
+        print(json.dumps(history, ensure_ascii=False, indent=2))
+        print("===================")
+
     messages_to_send = (
         [
             {"role": "system", "content": system_content},
@@ -468,10 +504,11 @@ async def process_chat(
         if use_summary
         else [
             {"role": "system", "content": system_content},
-            *history,
+            *clean_history,
             {"role": "user", "content": message},
         ]
     )
+
 
     response = groq_client.chat.completions.create(
         model="gpt-oss-120b",
@@ -506,6 +543,21 @@ async def process_chat(
 
     else:
         reply = response.choices[0].message.content
+        selected_voice = VOICE_MAP.get(
+            voice_type,
+            "ko-KR-InJoonNeural"
+        )
+
+        print("=== TTS VOICE ===")
+        print(selected_voice)
+
+        voice_path = await generate_voice_file(
+            text=reply,
+            voice=selected_voice
+        )
+
+        print("=== VOICE FILE ===")
+        print(voice_path)
 
     print("=== REPLY CHECK ===", reply)  # 외국어 감지 필터 들어가기 전
     print("=== REPLY CHECK - 외국어감지 전 ===", contains_foreign(reply))
@@ -565,4 +617,7 @@ async def process_chat(
     await db_sensitive.commit()
     await db_audit.commit()
 
-    return reply
+    return {
+        "reply": reply,
+        "voice_file": voice_path
+    }
