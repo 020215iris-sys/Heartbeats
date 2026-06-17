@@ -123,7 +123,9 @@ async def signup(
         audit_log = AuditLogGeneral(
             user_id=new_user.id,
             action="SIGNUP",
-            resource_type="USER"
+            resource_type="SESSION",
+            resource_id=new_session.id,
+            ip_address=request.client.host,
         )
         db_audit.add(audit_log)
         await db_audit.flush()
@@ -188,7 +190,9 @@ async def login(
         audit_log = AuditLogGeneral(
             user_id=user.id,
             action="LOGIN",
-            resource_type="USER"
+            resource_type="SESSION",
+            resource_id=new_session.id,
+            ip_address=request.client.host,
         )
         db_audit.add(audit_log)
 
