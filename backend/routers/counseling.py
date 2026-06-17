@@ -35,7 +35,7 @@ async def chat(
 ):
     from services.chat_service import process_chat
     try:
-        reply = await process_chat(
+        result = await process_chat(
             message=body.message,
             session_id=body.session_id,
             history=body.history,
@@ -53,7 +53,7 @@ async def chat(
             status_code=429,
             detail="접속량이 많습니다. 잠시 후에 시도해주세요.",
         )
-    return {"reply": reply}
+    return result
 
 groq_client = OpenAI(
     api_key=os.getenv("CEREBRAS_API_KEY"),
