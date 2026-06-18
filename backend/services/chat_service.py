@@ -553,6 +553,9 @@ async def process_chat(
 
         print("=== TTS START ===")
 
+        import time
+        tts_start = time.time()
+
         voice_path = await generate_voice_file(
             text=reply,
             voice=selected_voice
