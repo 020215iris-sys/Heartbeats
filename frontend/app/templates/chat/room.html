@@ -462,6 +462,7 @@
   let audioChunks = [];
   let isRecording = false;
   let isSubmitting = false;
+  let isVoiceSubmit = false;
 
   // 채팅방 로드 직후 세션을 백그라운드로 준비 (페이지 렌더는 안 막음)
   fetch('{{ url_for("chat.prepare_session") }}', {
@@ -556,10 +557,46 @@
     });
   }
 
+  function showUserProcessingBubble() {
+    const wrapper = document.createElement('div');
+    wrapper.id = 'stt-processing';
+
+    wrapper.className = 'mb-3';
+
+    wrapper.innerHTML = `
+      <div class="ml-auto w-fit max-w-[82%]">
+        <div class="bg-[#A47764] text-white rounded-2xl rounded-br-md px-4 py-3 text-[15px] leading-6 shadow-sm">
+          🎤 음성을 텍스트로 변환 중...
+        </div>
+      </div>
+    `;
+
+    messagesEl.appendChild(wrapper);
+
+    scrollToBottom();
+  } 
+  
+  function replaceUserProcessingBubble(text) {
+    const bubble =
+      document.getElementById('stt-processing');
+
+    if (!bubble) return;
+
+    bubble.remove();
+
+    appendMessage(
+      'user',
+      text,
+      new Date(),
+      { stream: false }
+    );
+  }
+
   function appendMessage(role, content, timestamp, options = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'mb-3';
 
+  
     if (role === 'assistant') {
       const row = document.createElement('div');
       row.className = 'flex items-end gap-2';
@@ -601,6 +638,8 @@
     return Promise.resolve();
   }
 
+
+
   function showLoading() {
     hideLoading();
 
@@ -617,7 +656,13 @@
       <span class="loading-dot"></span>
       <span class="loading-dot"></span>
       <span class="loading-dot"></span>
+
+        <span id="loading-text"
+            class="ml-2 text-sm text-slate-600">
+        답변을 생성하고 있어요...
+      </span>
     `;
+
 
     row.appendChild(createAssistantAvatar());
     row.appendChild(pill);
@@ -657,7 +702,19 @@
     isSubmitting = true;
     submitBtn.disabled = true;
 
-    await appendMessage('user', message, new Date(), { stream: false });
+    if (!isVoiceSubmit) {
+
+      await appendMessage(
+        'user',
+        message,
+        new Date(),
+        { stream: false }
+      );
+
+    }
+
+    isVoiceSubmit = false;
+
     showLoading();
 
     textarea.value = '';
@@ -677,6 +734,8 @@
 
       if (res.ok) {
         const data = await res.json();
+        textarea.placeholder = '답변을 생성하는 중...';
+        console.log("5. AI 응답 도착", Date.now());
         await appendMessage('assistant', data.reply, data.timestamp, { stream: true });
 
             console.log(data);
@@ -783,8 +842,15 @@
     // 이미 녹음 중이면 종료
     if (isRecording) {
 
+      console.log("1. 중지버튼 클릭", Date.now());
+
       mediaRecorder.stop();
       isRecording = false;
+
+      micButton.innerHTML = micSvg;
+      micButton.classList.remove('recording');
+
+      showUserProcessingBubble();
 
       return;
     }
@@ -806,6 +872,8 @@
     };
 
     mediaRecorder.onstop = async () => {
+
+      console.log("2. onstop 진입", Date.now());
 
       try {
 
@@ -830,13 +898,34 @@
           }
         );
 
+        console.log("3. STT 응답 도착", Date.now());
+
         const data = await response.json();
 
-        textarea.value = data.text;
-        textarea.focus();
-
         if (data.text && data.text.trim()) {
+
+          replaceUserProcessingBubble(data.text);
+
+          isVoiceSubmit = true;
+
+          textarea.value = data.text;
+          textarea.focus();
+
+          console.log("4. 채팅 전송", Date.now());
+
           chatForm.requestSubmit();
+
+        } else {
+
+          const bubble =
+            document.getElementById('stt-processing');
+
+          if (bubble) {
+            bubble.remove();
+          }
+
+          alert("음성을 인식하지 못했어요.");
+
         }
 
       } catch (err) {
@@ -846,9 +935,6 @@
       } finally {
 
         isRecording = false;
-
-        micButton.innerHTML = micSvg;
-        micButton.classList.remove('recording');
 
         textarea.placeholder =
           '메시지를 입력하세요 (Enter로 전송, Shift+Enter로 줄바꿈)';
