@@ -70,10 +70,21 @@ groq_client = OpenAI(
 async def close_session_with_summary(session, db_sensitive, db_audit):
     """
     세션 종료 + 요약 저장 공통 함수.
-
-    요약 API / Groq / YAML 파싱 중 하나가 실패해도
-    summaries 저장 자체는 실패하지 않도록 방어한다.
+    ...
     """
+    # 멱등 가드: 같은 세션 요약이 이미 있으면 중복 생성 금지
+    dup = await db_sensitive.execute(
+        select(Summary).where(
+            Summary.session_id == session.id,
+            Summary.deleted_at.is_(None),
+        )
+    )
+    if dup.scalars().first() is not None:
+        session.is_active = False
+        if session.ended_at is None:
+            session.ended_at = datetime.now(timezone.utc)
+        return None
+
     session.ended_at = datetime.now(timezone.utc)
     session.is_active = False
 
@@ -305,6 +316,9 @@ prompt_adjustment: {summary_data.get("prompt_adjustment", [])}
     im_value = summary_data.get("important_memory", [])
     ct_bytes, ct_kid = encrypt_json(ct_value)
     im_bytes, im_kid = encrypt_json(im_value)
+
+    print("SAVE SUMMARY")
+    print(session.id)
 
     new_summary = Summary(
         session_id=session.id,
@@ -726,6 +740,8 @@ async def end_session(
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
         if str(session.user_id) != current_user["user_id"]:
             raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+        
+        print("SOURCE = END_SESSION")
 
         new_summary = await close_session_with_summary(session, db_sensitive, db_audit)
 
