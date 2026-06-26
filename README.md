@@ -56,6 +56,14 @@ Heartbeat는 이러한 문제를 AI 기술을 활용하여
 
 ---
 
+## Project Information
+
+- 개발 기간 : 2026.05 ~ 2026.06
+- 개발 인원 : 4명
+- 프로젝트 유형 : 팀 프로젝트 (Final Project)
+
+---
+
 #  핵심 기능
 
 ### 🤖 AI 상담
@@ -84,7 +92,7 @@ Heartbeat는 이러한 문제를 AI 기술을 활용하여
 
 ---
 
-# 🏗 시스템 아키텍처
+# 시스템 아키텍처
 
 (아키텍처 이미지 삽입)
 
@@ -109,7 +117,7 @@ PostgreSQL / Redis
 
 ---
 
-# 🛠 기술 스택
+# 기술 스택
 
 | 분야       | 기술                                     |
 | -------- | -------------------------------------- |
@@ -122,7 +130,7 @@ PostgreSQL / Redis
 
 ---
 
-# 📂 디렉토리 구조
+# 디렉토리 구조
 
 ```text
 Heartbeats/
@@ -162,9 +170,6 @@ Heartbeats/
 ```
 
 ```
-
----
-
 # 🚀 설치 및 실행
 
 ```bash
@@ -191,7 +196,7 @@ python run.py
 
 ---
 
-# 🌿 브랜치 전략
+# 브랜치 전략
 
 Git Flow를 기반으로 협업을 진행했습니다.
 
@@ -219,7 +224,7 @@ feature/db
 
 ---
 
-# 👥 Team
+# Team
 
 | Part     | Description                                |
 | -------- | ------------------------------------------ |
@@ -230,7 +235,7 @@ feature/db
 
 ---
 
-# 📈 Project Goals
+# Project Goals
 
 * 상담의 맥락을 유지하는 AI 상담 구현
 * 사용자 맞춤형 정서 케어 제공
@@ -239,6 +244,6 @@ feature/db
 
 ---
 
-# 📄 License
+# License
 
-This project is licensed under the MIT License.
+MIT
